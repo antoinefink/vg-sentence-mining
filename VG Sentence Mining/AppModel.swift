@@ -34,18 +34,31 @@ import ScreenCaptureKit
     @Published var translating = false
     @Published var sending = false
     @Published var exportStatus: String?
+    @Published private(set) var wordAudio: Data?
+    @Published private(set) var synthesizing = false
+    @Published private(set) var hasReplicateToken = false
+    @Published private(set) var pronunciationError: String?
+    @Published var showingPronunciationSetup = false
+    @Published private(set) var testingVoice = false
+    @Published private(set) var voiceTestStatus: String?
     @Published var now = Date()
     @Published var deckNames: [String] = ["Default"]
     @Published var deck = UserDefaults.standard.string(forKey: "ankiDeck") ?? "Default"
     @Published var codexPath = UserDefaults.standard.string(forKey: "codexPath") ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".bun/bin/codex").path
     private let speech = LocalSpeechEngine()
     private let translator = CodexTranslator()
+    private let pronunciation = ReplicatePronunciation()
+    private let tokenStore = ReplicateTokenStore()
     private let capture = CaptureService()
     private let windowPicker = GameWindowPicker()
     private var media: SessionMedia?
     private var assembler = TranscriptAssembler()
     private var translationTask: Task<Void, Never>?
     private var translationID = UUID()
+    private var pronunciationTask: Task<Void, Never>?
+    private var pronunciationID = UUID()
+    private var voiceTestTask: Task<Void, Never>?
+    private var voiceTestID = UUID()
     private var player: AVAudioPlayer?
     private var timer: AnyCancellable?
     private var audioSamples = 0
@@ -53,6 +66,7 @@ import ScreenCaptureKit
 
     init() {
         do { media = try SessionMedia() } catch { self.error = error.localizedDescription }
+        do { hasReplicateToken = try tokenStore.load() != nil } catch { self.error = error.localizedDescription }
         timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect().sink { [weak self] date in self?.expire(at: date) }
         windowPicker.onSelection = { [weak self] filter in
             self?.choosingWindow = false
@@ -67,7 +81,7 @@ import ScreenCaptureKit
 
     var chosenFrame: Screenshot? { frames.indices.contains(frameIndex) ? frames[frameIndex] : nil }
     var canSend: Bool {
-        selected.map { $0.expiresAt > now } == true && chosenFrame != nil && !selectedWord.isEmpty && !definition.isEmpty && !sentenceTranslation.isEmpty && !translating && !sending && exportStatus == nil
+        selected.map { $0.expiresAt > now } == true && chosenFrame != nil && wordAudio != nil && !selectedWord.isEmpty && !definition.isEmpty && !sentenceTranslation.isEmpty && !translating && !sending && exportStatus == nil
     }
     var expiresIn: String {
         let seconds = max(0, Int(selected?.expiresAt.timeIntervalSince(now) ?? 0))
@@ -178,6 +192,7 @@ import ScreenCaptureKit
         frameIndex = frames.indices.min(by: { abs(frames[$0].date.timeIntervalSince(row.capturedAt)) < abs(frames[$1].date.timeIntervalSince(row.capturedAt)) }) ?? 0
         if sentWords[row.id]?.contains(selectedWord) == true { exportStatus = "Already sent to Anki" }
         explainSelection()
+        if hasReplicateToken { generatePronunciation() }
     }
 
     func explainSelection() {
@@ -207,8 +222,88 @@ import ScreenCaptureKit
         } catch { self.error = error.localizedDescription }
     }
 
+    func saveReplicateKey(_ key: String) throws {
+        try tokenStore.save(key)
+        hasReplicateToken = true
+        showingPronunciationSetup = false
+        if selected != nil { generatePronunciation() }
+    }
+
+    func removeReplicateKey() {
+        do {
+            try tokenStore.delete()
+            stopVoiceTest()
+            hasReplicateToken = false
+            pronunciationID = UUID(); pronunciationTask?.cancel()
+            wordAudio = nil; synthesizing = false; pronunciationError = nil
+        } catch { self.error = error.localizedDescription }
+    }
+
+    func generatePronunciation() {
+        guard let selected, selected.expiresAt > Date(), !synthesizing else { return }
+        guard hasReplicateToken else { showingPronunciationSetup = true; return }
+        let id = UUID(); pronunciationID = id
+        let word = selectedWord
+        synthesizing = true; pronunciationError = nil
+        pronunciationTask = Task {
+            defer { if pronunciationID == id { synthesizing = false } }
+            do {
+                guard let token = try tokenStore.load() else {
+                    hasReplicateToken = false; showingPronunciationSetup = true
+                    return
+                }
+                let audio = try await pronunciation.generate(word: word, language: selected.language, token: token)
+                guard pronunciationID == id, self.selected?.id == selected.id, selected.expiresAt > Date() else { return }
+                _ = try AVAudioPlayer(data: audio)
+                wordAudio = audio
+            } catch is CancellationError {
+            } catch {
+                if pronunciationID == id {
+                    pronunciationError = (error as? MiningError)?.localizedDescription ?? "The word audio could not be played. Please retry."
+                }
+            }
+        }
+    }
+
+    func playWordAudio() {
+        guard let wordAudio else { return }
+        do {
+            player?.stop()
+            player = try AVAudioPlayer(data: wordAudio)
+            player?.play()
+        } catch { pronunciationError = "The word audio could not be played. Please retry." }
+    }
+
+    func testVoice(_ language: GameLanguage) {
+        guard !testingVoice else { return }
+        let id = UUID(); voiceTestID = id
+        testingVoice = true; voiceTestStatus = "Preparing \(language.name) pronunciation…"
+        voiceTestTask = Task {
+            defer { if voiceTestID == id { testingVoice = false } }
+            do {
+                guard let token = try tokenStore.load() else { throw MiningError.message("Save a Replicate API key first.") }
+                let word = language == .german ? "Freiheit" : "libertad"
+                let audio = try await pronunciation.generate(word: word, language: language, token: token)
+                try Task.checkCancellation()
+                guard voiceTestID == id else { return }
+                player?.stop()
+                player = try AVAudioPlayer(data: audio)
+                player?.play()
+                voiceTestStatus = "Playing “\(word)” in \(language.name)."
+            } catch is CancellationError {
+            } catch {
+                if voiceTestID == id { voiceTestStatus = (error as? MiningError)?.localizedDescription ?? "The voice test could not finish. Please retry." }
+            }
+        }
+    }
+
+    func stopVoiceTest() {
+        voiceTestID = UUID(); voiceTestTask?.cancel()
+        testingVoice = false; voiceTestStatus = nil
+    }
+
     func sendToAnki() {
-        guard canSend, let selected, let media, let frame = chosenFrame else { return }
+        guard canSend, let selected, let media, let frame = chosenFrame, let wordAudio else { return }
         sending = true
         let word = selectedWord, text = sentence
         let explanation = WordExplanation(dictionaryForm: dictionaryForm, definition: definition, sentenceTranslation: sentenceTranslation)
@@ -218,7 +313,7 @@ import ScreenCaptureKit
                 guard selected.expiresAt > Date() else { throw MiningError.message("This sentence has expired.") }
                 let url = try media.audioClip(start: max(0, selected.start - 0.2), end: selected.end + 0.3)
                 let audio = try Data(contentsOf: url), screenshot = try Data(contentsOf: frame.url)
-                let noteID = try await AnkiClient().send(word: word, sentence: text, explanation: explanation, screenshot: screenshot, audio: audio, deck: deck)
+                let noteID = try await AnkiClient().send(word: word, sentence: text, explanation: explanation, screenshot: screenshot, sentenceAudio: audio, wordAudio: wordAudio, deck: deck)
                 sentWords[selected.id, default: []].insert(word)
                 if self.selected?.id == selected.id, selectedWord == word { exportStatus = "Sent to Anki · note \(noteID)" }
             } catch { self.error = error.localizedDescription }
@@ -241,6 +336,8 @@ import ScreenCaptureKit
 
     private func clearSelection() {
         translationID = UUID(); translationTask?.cancel(); translating = false
+        pronunciationID = UUID(); pronunciationTask?.cancel(); synthesizing = false
+        wordAudio = nil; pronunciationError = nil
         player?.stop(); player = nil
         selected = nil; selectedWord = ""; sentence = ""; dictionaryForm = ""; definition = ""; sentenceTranslation = ""; frames = []; exportStatus = nil
         do { try media?.clearPreview() } catch { self.error = error.localizedDescription }

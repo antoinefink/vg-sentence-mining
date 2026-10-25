@@ -19,6 +19,7 @@ struct ContentView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .sheet(isPresented: $showingCaptureSetup) { CaptureSetupView(model: model) }
+        .sheet(isPresented: $model.showingPronunciationSetup) { PronunciationKeyView(model: model) }
         .task { if !model.modelsReady && !model.loadingModels { model.loadModels() } }
         .alert("VG Sentence Mining", isPresented: Binding(get: { model.error != nil }, set: { if !$0 { model.error = nil } })) {
             Button("OK") { model.error = nil }
@@ -173,6 +174,18 @@ private struct WordInspector: View {
                 }.padding(.horizontal, 20).padding(.vertical, 12)
                 ScrollView {
                     VStack(alignment: .leading, spacing: 18) {
+                        HStack(spacing: 8) {
+                            if model.synthesizing {
+                                ProgressView().controlSize(.small)
+                                Text("Preparing word pronunciation…").font(.callout).foregroundStyle(.secondary)
+                            } else if model.wordAudio != nil {
+                                Button(action: model.playWordAudio) { Label("Play word", systemImage: "speaker.wave.2") }
+                                Text("Anki front").font(.caption).foregroundStyle(.secondary)
+                            } else {
+                                Button(model.hasReplicateToken ? "Generate word audio" : "Set up word audio…", action: model.generatePronunciation)
+                            }
+                        }
+                        if let error = model.pronunciationError { Text(error).font(.caption).foregroundStyle(.red) }
                         if let image = screenshotImage {
                             Image(nsImage: image).resizable().aspectRatio(contentMode: .fit).frame(maxWidth: .infinity)
                         } else {
@@ -244,6 +257,7 @@ struct WordFlowLayout: Layout {
 
 struct SettingsView: View {
     @ObservedObject var model: AppModel
+    @State private var showingKeySetup = false
     var body: some View {
         Form {
             Section("Language assistance") {
@@ -256,7 +270,55 @@ struct SettingsView: View {
                 Button("Check AnkiConnect", action: model.checkAnki)
                 Text("Uses the Basic note type with Front and Back fields. Keep Anki open with AnkiConnect enabled.").font(.caption).foregroundStyle(.secondary)
             }
+            Section("Word pronunciation") {
+                LabeledContent("Model", value: "MiniMax Speech 2.6 HD")
+                if model.hasReplicateToken {
+                    Label("API key saved in Keychain", systemImage: "key.fill")
+                    HStack {
+                        Button("Replace API key…") { showingKeySetup = true }
+                        Button("Remove API key", role: .destructive, action: model.removeReplicateKey)
+                    }
+                    HStack {
+                        Button("Test German voice") { model.testVoice(.german) }
+                        Button("Test Spanish voice") { model.testVoice(.spanish) }
+                        if model.testingVoice { ProgressView().controlSize(.small) }
+                    }.disabled(model.testingVoice)
+                    if let status = model.voiceTestStatus { Text(status).font(.caption).foregroundStyle(.secondary) }
+                } else {
+                    Button("Set up Replicate…") { showingKeySetup = true }
+                }
+                Text("Generated word audio goes on the Anki front. The original sentence audio stays on the back.").font(.caption).foregroundStyle(.secondary)
+            }
             Button("Save", action: model.saveSettings)
         }.formStyle(.grouped)
+            .sheet(isPresented: $showingKeySetup) { PronunciationKeyView(model: model) }
+            .onDisappear { model.stopVoiceTest() }
+    }
+}
+
+private struct PronunciationKeyView: View {
+    @ObservedObject var model: AppModel
+    @Environment(\.dismiss) private var dismiss
+    @State private var token = ""
+    @State private var error: String?
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            Text("Word pronunciation").font(.title2).fontWeight(.semibold)
+            Text("Generate clear German and Spanish pronunciation with MiniMax Speech 2.6 HD on Replicate.")
+            SecureField("Replicate API key", text: $token).textFieldStyle(.roundedBorder).onSubmit(save)
+            Link("Get a Replicate API key", destination: URL(string: "https://replicate.com/account/api-tokens")!)
+            Text("Your key is stored in macOS Keychain. Only the selected word is sent to Replicate and MiniMax. A 10-character word costs about $0.001 at the current listed rate.").font(.caption).foregroundStyle(.secondary)
+            if let error { Text(error).font(.caption).foregroundStyle(.red) }
+            HStack {
+                Spacer()
+                Button("Cancel") { token = ""; dismiss() }.keyboardShortcut(.cancelAction)
+                Button(model.selected == nil ? "Save key" : "Save and generate", action: save)
+                    .keyboardShortcut(.defaultAction).disabled(token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+        }.padding(24).frame(width: 440)
+    }
+    private func save() {
+        do { try model.saveReplicateKey(token); token = ""; dismiss() }
+        catch { self.error = error.localizedDescription }
     }
 }
