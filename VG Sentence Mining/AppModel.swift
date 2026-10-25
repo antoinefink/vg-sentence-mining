@@ -34,8 +34,6 @@ import ScreenCaptureKit
     @Published var translating = false
     @Published var sending = false
     @Published var exportStatus: String?
-    @Published var clipLeading = 0.2
-    @Published var clipTrailing = 0.3
     @Published var now = Date()
     @Published var deckNames: [String] = ["Default"]
     @Published var deck = UserDefaults.standard.string(forKey: "ankiDeck") ?? "Default"
@@ -203,7 +201,7 @@ import ScreenCaptureKit
     func playClip() {
         guard let selected, let media else { return }
         do {
-            let url = try media.audioClip(start: max(0, selected.start - clipLeading), end: selected.end + clipTrailing)
+            let url = try media.audioClip(start: max(0, selected.start - 0.2), end: selected.end + 0.3)
             player = try AVAudioPlayer(contentsOf: url)
             player?.play()
         } catch { self.error = error.localizedDescription }
@@ -218,7 +216,7 @@ import ScreenCaptureKit
             defer { sending = false }
             do {
                 guard selected.expiresAt > Date() else { throw MiningError.message("This sentence has expired.") }
-                let url = try media.audioClip(start: max(0, selected.start - clipLeading), end: selected.end + clipTrailing)
+                let url = try media.audioClip(start: max(0, selected.start - 0.2), end: selected.end + 0.3)
                 let audio = try Data(contentsOf: url), screenshot = try Data(contentsOf: frame.url)
                 let noteID = try await AnkiClient().send(word: word, sentence: text, explanation: explanation, screenshot: screenshot, audio: audio, deck: deck)
                 sentWords[selected.id, default: []].insert(word)

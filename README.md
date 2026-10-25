@@ -9,7 +9,7 @@ The local Release build is installed at `~/Applications/VG Sentence Mining.app`.
 1. Connect the T9 drive and open the app.
 2. Choose **Start capture**, select the dialogue language, then choose the game window in the macOS sharing picker.
 3. Play your game. Return to the app and click a word in the recent dialogue.
-4. Review the screenshot, English definition and translation. Play the original audio and adjust its padding if needed.
+4. Review the screenshot, English definition and translation, and play the original audio. Clip padding is automatic.
 5. Choose **Send to Anki**. Keep Anki open with AnkiConnect enabled.
 
 The preview opens beside the transcript. Close it to give the transcript the full window. Capture continues when you switch back to the game.

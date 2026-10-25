@@ -198,12 +198,6 @@ private struct WordInspector: View {
                             Spacer()
                             Text("\(selected.end - selected.start, specifier: "%.1f") s").font(.caption).foregroundStyle(.secondary)
                         }
-                        DisclosureGroup("Adjust audio") {
-                            VStack {
-                                HStack { Text("Before"); Slider(value: $model.clipLeading, in: 0...1, step: 0.1); Text("\(model.clipLeading, specifier: "%.1f") s").monospacedDigit() }
-                                HStack { Text("After"); Slider(value: $model.clipTrailing, in: 0...1, step: 0.1); Text("\(model.clipTrailing, specifier: "%.1f") s").monospacedDigit() }
-                            }.padding(.top, 8)
-                        }.font(.caption)
                         Button("Regenerate English", action: model.explainSelection).controlSize(.small).disabled(model.translating)
                     }.padding(.horizontal, 20).padding(.bottom, 20)
                 }.frame(maxWidth: .infinity, maxHeight: .infinity)
