@@ -313,7 +313,7 @@ private struct PronunciationKeyView: View {
             Text("Generate clear German and Spanish pronunciation with \(model.pronunciationModel.name) on Replicate.")
             SecureField("Replicate API key", text: $token).textFieldStyle(.roundedBorder).onSubmit(save)
             Link("Get a Replicate API key", destination: URL(string: "https://replicate.com/account/api-tokens")!)
-            Text("Your key is stored in macOS Keychain. Only the selected word is sent to Replicate and MiniMax. You can change the audio model in Settings.").font(.caption).foregroundStyle(.secondary)
+            Text("Your key is stored in macOS Keychain. Only the selected word is sent to Replicate and your selected voice provider. You can change the audio model in Settings.").font(.caption).foregroundStyle(.secondary)
             if let error { Text(error).font(.caption).foregroundStyle(.red) }
             HStack {
                 Spacer()

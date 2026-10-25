@@ -41,7 +41,7 @@ import ScreenCaptureKit
     @Published var showingPronunciationSetup = false
     @Published private(set) var testingVoice = false
     @Published private(set) var voiceTestStatus: String?
-    @Published var pronunciationModel = PronunciationModel(rawValue: UserDefaults.standard.string(forKey: "pronunciationModel") ?? "") ?? .speech26HD {
+    @Published var pronunciationModel = PronunciationModel(rawValue: UserDefaults.standard.string(forKey: "pronunciationModel") ?? "") ?? .speech28HD {
         didSet {
             guard pronunciationModel != oldValue else { return }
             UserDefaults.standard.set(pronunciationModel.rawValue, forKey: "pronunciationModel")

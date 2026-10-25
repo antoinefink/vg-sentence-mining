@@ -39,7 +39,7 @@ private final class MockProtocol: URLProtocol, @unchecked Sendable {
         return URLSession(configuration: configuration)
     }
 
-    @Test(arguments: [GameLanguage.german, .spanish], [PronunciationModel.speech26HD, .speech28HD, .speech28Turbo])
+    @Test(arguments: [GameLanguage.german, .spanish], [PronunciationModel.speech28HD, .elevenV3, .inworldTTS2])
     func generatesOnlyTheTargetWordWithTheCorrectLanguage(language: GameLanguage, model: PronunciationModel) async throws {
         let requests = Mutex<[URLRequest]>([])
         let audio = Data([73, 68, 51, 1, 2, 3])
@@ -55,19 +55,24 @@ private final class MockProtocol: URLProtocol, @unchecked Sendable {
         let sent = requests.withLock { $0 }
         #expect(sent.count == 2)
         let expectedPath: String
+        let expectedInput: [String: Any]
         switch model {
-        case .speech26HD: expectedPath = "/v1/models/minimax/speech-2.6-hd/predictions"
-        case .speech28HD: expectedPath = "/v1/models/minimax/speech-2.8-hd/predictions"
-        case .speech28Turbo: expectedPath = "/v1/models/minimax/speech-2.8-turbo/predictions"
+        case .speech28HD:
+            expectedPath = "/v1/models/minimax/speech-2.8-hd/predictions"
+            expectedInput = ["text": word, "voice_id": language == .german ? "German_FriendlyMan" : "Spanish_Narrator", "language_boost": language == .german ? "German" : "Spanish", "audio_format": "mp3", "sample_rate": 32000, "speed": 1, "emotion": "neutral"]
+        case .elevenV3:
+            expectedPath = "/v1/models/elevenlabs/v3/predictions"
+            expectedInput = ["prompt": word, "voice": "Rachel", "language_code": language == .german ? "de" : "es"]
+        case .inworldTTS2:
+            expectedPath = "/v1/models/inworld/realtime-tts-2/predictions"
+            expectedInput = ["text": word, "voice_id": "Dennis", "language": language == .german ? "de" : "es", "audio_format": "mp3", "sample_rate": 48000]
         }
         #expect(sent[0].url?.path == expectedPath)
         #expect(sent[0].value(forHTTPHeaderField: "Authorization") == "Bearer test-token")
         #expect(sent[0].value(forHTTPHeaderField: "Cancel-After") == "60s")
         let body = try JSONSerialization.jsonObject(with: sent[0].httpBody!) as! [String: Any]
         let input = body["input"] as! [String: Any]
-        #expect(input["text"] as? String == word)
-        #expect(input["language_boost"] as? String == (language == .german ? "German" : "Spanish"))
-        #expect(input["voice_id"] as? String == (language == .german ? "German_FriendlyMan" : "Spanish_Narrator"))
+        #expect(NSDictionary(dictionary: input).isEqual(NSDictionary(dictionary: expectedInput)))
     }
 
     @Test func refusesAudioURLsOutsideReplicateWithoutSendingCredentials() async throws {

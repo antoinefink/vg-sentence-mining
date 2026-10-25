@@ -1,23 +1,23 @@
 import Foundation
 
 public enum PronunciationModel: String, CaseIterable, Sendable {
-    case speech26HD = "minimax/speech-2.6-hd"
     case speech28HD = "minimax/speech-2.8-hd"
-    case speech28Turbo = "minimax/speech-2.8-turbo"
+    case elevenV3 = "elevenlabs/v3"
+    case inworldTTS2 = "inworld/realtime-tts-2"
 
     public var name: String {
         switch self {
-        case .speech26HD: "MiniMax Speech 2.6 HD"
         case .speech28HD: "MiniMax Speech 2.8 HD"
-        case .speech28Turbo: "MiniMax Speech 2.8 Turbo"
+        case .elevenV3: "ElevenLabs v3"
+        case .inworldTTS2: "Inworld Realtime TTS 2"
         }
     }
 
     public var detail: String {
         switch self {
-        case .speech26HD: "Original high-quality model."
-        case .speech28HD: "Newer model tuned for audio quality."
-        case .speech28Turbo: "Newer model tuned for speed."
+        case .speech28HD: "High-definition speech from MiniMax."
+        case .elevenV3: "Expressive multilingual speech from ElevenLabs."
+        case .inworldTTS2: "Fast multilingual speech from Inworld."
         }
     }
 }
@@ -46,13 +46,21 @@ public struct ReplicatePronunciation: Sendable {
         self.session = session ?? URLSession(configuration: configuration, delegate: NoRedirects(), delegateQueue: nil)
     }
 
-    public func generate(word: String, language: GameLanguage, model: PronunciationModel = .speech26HD, token: String) async throws -> Data {
+    public func generate(word: String, language: GameLanguage, model: PronunciationModel = .speech28HD, token: String) async throws -> Data {
         let text = word.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { throw MiningError.message("Select a word to pronounce.") }
         var predictionID: String?
         var predictionPending = false
         do {
-            let input: [String: Any] = ["text": text, "voice_id": language == .german ? "German_FriendlyMan" : "Spanish_Narrator", "language_boost": language.name, "audio_format": "mp3", "sample_rate": 32000, "speed": 1, "emotion": "neutral"]
+            let input: [String: Any]
+            switch model {
+            case .speech28HD:
+                input = ["text": text, "voice_id": language == .german ? "German_FriendlyMan" : "Spanish_Narrator", "language_boost": language.name, "audio_format": "mp3", "sample_rate": 32000, "speed": 1, "emotion": "neutral"]
+            case .elevenV3:
+                input = ["prompt": text, "voice": "Rachel", "language_code": language.rawValue]
+            case .inworldTTS2:
+                input = ["text": text, "voice_id": "Dennis", "language": language.rawValue, "audio_format": "mp3", "sample_rate": 48000]
+            }
             var request = authorized(api.appendingPathComponent("models/\(model.rawValue)/predictions"), token: token)
             request.httpMethod = "POST"
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")

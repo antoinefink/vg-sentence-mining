@@ -20,7 +20,7 @@ The preview opens beside the transcript. Close it to give the transcript the ful
 - Transcription uses Parakeet v3 through FluidAudio. Speaker labels are anonymous and can be imperfect, especially over music, sound effects and overlapping voices.
 - English assistance runs the installed Codex CLI using its existing login. Configure the executable in Settings if needed. Codex sends the selected text to OpenAI; speech recognition runs on the Mac.
 - AnkiConnect must listen on `127.0.0.1:8765`. In Settings, refresh the available decks and note types, choose a destination for each language, review the field mapping, then choose **Save**. Choices are stored separately for each Anki profile and language. Settings can be resized.
-- Word pronunciation offers [MiniMax Speech 2.6 HD](https://replicate.com/minimax/speech-2.6-hd), [Speech 2.8 HD](https://replicate.com/minimax/speech-2.8-hd) and [Speech 2.8 Turbo](https://replicate.com/minimax/speech-2.8-turbo) on Replicate, with native German and Spanish voices. Enter your Replicate API key in the app's secure setup sheet or Settings. It is stored in macOS Keychain on this device, never in preferences or a project file.
+- Word pronunciation offers [MiniMax Speech 2.8 HD](https://replicate.com/minimax/speech-2.8-hd), [ElevenLabs v3](https://replicate.com/elevenlabs/v3) and [Inworld Realtime TTS 2](https://replicate.com/inworld/realtime-tts-2) through Replicate. All three support German and Spanish, with an explicit language setting for single words. Enter your Replicate API key in the app's secure setup sheet or Settings. It is stored in macOS Keychain on this device, never in preferences or a project file.
 - macOS controls capture permission and window selection. Choose the source again after restarting the app.
 
 ## Word audio and card layout
@@ -29,9 +29,9 @@ The app uses your selected note type without changing its templates. For the cur
 
 Expand **Field mapping** to change where each item goes. Dictionary form and definition may share **Definitions**. Both generated word audio and recorded sentence audio are required; other items can be omitted. **Basic** is also supported, with word audio on **Front** and the remaining content on **Back**. Refreshing and saving Settings do not modify Anki. Only **Send to Anki** creates a note. Export checks that the active profile still matches the saved destination.
 
-After a key is configured, choosing a word generates its pronunciation. You can listen with **Play word** before exporting. Settings provides a **Model** picker plus **Test German voice** and **Test Spanish voice** buttons. The picker defaults to 2.6 HD and saves changes immediately. Changing models cancels pending audio and regenerates the selected draft with the new model. Export waits for valid word audio; a failed generation offers a retry.
+After a key is configured, choosing a word generates its pronunciation. You can listen with **Play word** before exporting. Settings provides a **Model** picker plus **Test German voice** and **Test Spanish voice** buttons. The picker defaults to MiniMax 2.8 HD and saves changes immediately. A saved choice of the removed MiniMax 2.6 HD or 2.8 Turbo falls back to 2.8 HD. Changing models cancels pending audio and regenerates the selected draft with the new model. Export waits for valid word audio; a failed generation offers a retry.
 
-Only the selected word goes to Replicate and MiniMax. The original game recording stays on the Mac. The listed rates are $0.10 per 1,000 input characters for the HD models and $0.06 for Turbo, about $0.001 or $0.0006 for a ten-character word. Replicate requires an account with API credit. See the linked model pages for current pricing.
+Only the selected word goes to Replicate and the selected voice provider. The original game recording stays on the Mac. The listed rates are $0.10 per 1,000 input characters for MiniMax and ElevenLabs and $0.025 for Inworld, about $0.001 or $0.00025 for a ten-character word. Replicate requires an account with API credit. See the linked model pages for current pricing.
 
 ## Retention
 
@@ -74,7 +74,7 @@ The user-approved prerecorded video serves as the repeatable capture test. GeFor
 
 A full 30-minute live game soak and forced ScreenCaptureKit interruption test have not been performed. Buffer expiry is verified with simulated timestamps and actual file deletion.
 
-The user confirmed live MiniMax pronunciation works from Settings. The current daily Anki profile's deck names, fields and templates were inspected read-only. Configurable export is verified with mocked AnkiConnect responses; no notes, decks, templates or media were modified in that profile during this change.
+MiniMax Speech 2.8 HD, ElevenLabs v3 and Inworld Realtime TTS 2 each generated playable German and Spanish test-word audio through the installed app's Settings. The user also confirmed pronunciation works. The current daily Anki profile's deck names, fields and templates were inspected read-only. Configurable export is verified with mocked AnkiConnect responses; no notes, decks, templates or media were modified in that profile during this change.
 
 ## Icon
 
