@@ -39,8 +39,8 @@ private final class MockProtocol: URLProtocol, @unchecked Sendable {
         return URLSession(configuration: configuration)
     }
 
-    @Test(arguments: [GameLanguage.german, .spanish])
-    func generatesOnlyTheTargetWordWithTheCorrectLanguage(language: GameLanguage) async throws {
+    @Test(arguments: [GameLanguage.german, .spanish], [PronunciationModel.speech26HD, .speech28HD, .speech28Turbo])
+    func generatesOnlyTheTargetWordWithTheCorrectLanguage(language: GameLanguage, model: PronunciationModel) async throws {
         let requests = Mutex<[URLRequest]>([])
         let audio = Data([73, 68, 51, 1, 2, 3])
         let network = session { request in
@@ -50,11 +50,17 @@ private final class MockProtocol: URLProtocol, @unchecked Sendable {
             return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, result)
         }
         let word = language == .german ? "Freiheit" : "libertad"
-        let result = try await ReplicatePronunciation(session: network).generate(word: word, language: language, token: "test-token")
+        let result = try await ReplicatePronunciation(session: network).generate(word: word, language: language, model: model, token: "test-token")
         #expect(result == audio)
         let sent = requests.withLock { $0 }
         #expect(sent.count == 2)
-        #expect(sent[0].url?.path == "/v1/models/minimax/speech-2.6-hd/predictions")
+        let expectedPath: String
+        switch model {
+        case .speech26HD: expectedPath = "/v1/models/minimax/speech-2.6-hd/predictions"
+        case .speech28HD: expectedPath = "/v1/models/minimax/speech-2.8-hd/predictions"
+        case .speech28Turbo: expectedPath = "/v1/models/minimax/speech-2.8-turbo/predictions"
+        }
+        #expect(sent[0].url?.path == expectedPath)
         #expect(sent[0].value(forHTTPHeaderField: "Authorization") == "Bearer test-token")
         #expect(sent[0].value(forHTTPHeaderField: "Cancel-After") == "60s")
         let body = try JSONSerialization.jsonObject(with: sent[0].httpBody!) as! [String: Any]

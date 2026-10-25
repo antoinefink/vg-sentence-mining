@@ -41,6 +41,16 @@ import ScreenCaptureKit
     @Published var showingPronunciationSetup = false
     @Published private(set) var testingVoice = false
     @Published private(set) var voiceTestStatus: String?
+    @Published var pronunciationModel = PronunciationModel(rawValue: UserDefaults.standard.string(forKey: "pronunciationModel") ?? "") ?? .speech26HD {
+        didSet {
+            guard pronunciationModel != oldValue else { return }
+            UserDefaults.standard.set(pronunciationModel.rawValue, forKey: "pronunciationModel")
+            stopVoiceTest(); player?.stop()
+            pronunciationID = UUID(); pronunciationTask?.cancel()
+            wordAudio = nil; synthesizing = false; pronunciationError = nil
+            if selected != nil, hasReplicateToken { generatePronunciation() }
+        }
+    }
     @Published var now = Date()
     @Published private(set) var ankiCatalog: AnkiCatalog?
     @Published private(set) var ankiTargets: [GameLanguage: AnkiNoteConfiguration] = [:]
@@ -261,7 +271,7 @@ import ScreenCaptureKit
         guard let selected, selected.expiresAt > Date(), !synthesizing else { return }
         guard hasReplicateToken else { showingPronunciationSetup = true; return }
         let id = UUID(); pronunciationID = id
-        let word = selectedWord
+        let word = selectedWord, model = pronunciationModel
         synthesizing = true; pronunciationError = nil
         pronunciationTask = Task {
             defer { if pronunciationID == id { synthesizing = false } }
@@ -270,7 +280,7 @@ import ScreenCaptureKit
                     hasReplicateToken = false; showingPronunciationSetup = true
                     return
                 }
-                let audio = try await pronunciation.generate(word: word, language: selected.language, token: token)
+                let audio = try await pronunciation.generate(word: word, language: selected.language, model: model, token: token)
                 guard pronunciationID == id, self.selected?.id == selected.id, selected.expiresAt > Date() else { return }
                 _ = try AVAudioPlayer(data: audio)
                 wordAudio = audio
@@ -295,13 +305,14 @@ import ScreenCaptureKit
     func testVoice(_ language: GameLanguage) {
         guard !testingVoice else { return }
         let id = UUID(); voiceTestID = id
+        let model = pronunciationModel
         testingVoice = true; voiceTestStatus = "Preparing \(language.name) pronunciation…"
         voiceTestTask = Task {
             defer { if voiceTestID == id { testingVoice = false } }
             do {
                 guard let token = try tokenStore.load() else { throw MiningError.message("Save a Replicate API key first.") }
                 let word = language == .german ? "Freiheit" : "libertad"
-                let audio = try await pronunciation.generate(word: word, language: language, token: token)
+                let audio = try await pronunciation.generate(word: word, language: language, model: model, token: token)
                 try Task.checkCancellation()
                 guard voiceTestID == id else { return }
                 player?.stop()

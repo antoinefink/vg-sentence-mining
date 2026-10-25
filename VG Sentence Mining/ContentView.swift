@@ -273,7 +273,10 @@ struct SettingsView: View {
             }
             AnkiSettingsSection(model: model)
             Section("Word pronunciation") {
-                LabeledContent("Model", value: "MiniMax Speech 2.6 HD")
+                Picker("Model", selection: $model.pronunciationModel) {
+                    ForEach(PronunciationModel.allCases, id: \.self) { Text($0.name).tag($0) }
+                }
+                Text(model.pronunciationModel.detail + " Changes apply immediately.").font(.caption).foregroundStyle(.secondary)
                 if model.hasReplicateToken {
                     Label("API key saved in Keychain", systemImage: "key.fill")
                     HStack {
@@ -307,10 +310,10 @@ private struct PronunciationKeyView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             Text("Word pronunciation").font(.title2).fontWeight(.semibold)
-            Text("Generate clear German and Spanish pronunciation with MiniMax Speech 2.6 HD on Replicate.")
+            Text("Generate clear German and Spanish pronunciation with \(model.pronunciationModel.name) on Replicate.")
             SecureField("Replicate API key", text: $token).textFieldStyle(.roundedBorder).onSubmit(save)
             Link("Get a Replicate API key", destination: URL(string: "https://replicate.com/account/api-tokens")!)
-            Text("Your key is stored in macOS Keychain. Only the selected word is sent to Replicate and MiniMax. A 10-character word costs about $0.001 at the current listed rate.").font(.caption).foregroundStyle(.secondary)
+            Text("Your key is stored in macOS Keychain. Only the selected word is sent to Replicate and MiniMax. You can change the audio model in Settings.").font(.caption).foregroundStyle(.secondary)
             if let error { Text(error).font(.caption).foregroundStyle(.red) }
             HStack {
                 Spacer()
