@@ -20,7 +20,10 @@ struct ContentView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .sheet(isPresented: $showingCaptureSetup) { CaptureSetupView(model: model) }
         .sheet(isPresented: $model.showingPronunciationSetup) { PronunciationKeyView(model: model) }
-        .task { if !model.modelsReady && !model.loadingModels { model.loadModels() } }
+        .task {
+            if !model.modelsReady && !model.loadingModels { model.loadModels() }
+            model.refreshAnki()
+        }
         .alert("VG Sentence Mining", isPresented: Binding(get: { model.error != nil }, set: { if !$0 { model.error = nil } })) {
             Button("OK") { model.error = nil }
         } message: { Text(model.error ?? "") }
@@ -162,6 +165,7 @@ private struct CaptureSetupView: View {
 
 private struct WordInspector: View {
     @ObservedObject var model: AppModel
+    @Environment(\.openWindow) private var openWindow
     @State private var screenshotImage: NSImage?
     var body: some View {
         if let selected = model.selected {
@@ -217,6 +221,8 @@ private struct WordInspector: View {
                 Divider()
                 HStack {
                     if let message = model.exportStatus { Label(message, systemImage: "checkmark.circle").font(.caption) }
+                    else if let target = model.ankiTargetForSelection { Text(target.deckName).font(.caption).foregroundStyle(.secondary).lineLimit(1).help("\(target.profileName) · \(target.noteTypeName)") }
+                    if model.ankiTargetForSelection == nil { Button("Configure Anki…") { openWindow(id: "settings") }.buttonStyle(.borderless) }
                     Spacer()
                     if model.sending { ProgressView().controlSize(.small) }
                     Button("Send to Anki", action: model.sendToAnki).buttonStyle(.borderedProminent).disabled(!model.canSend)
@@ -265,11 +271,7 @@ struct SettingsView: View {
                 Text("Codex uses your existing login. Selected text is sent to its OpenAI service; game audio stays local.").font(.caption).foregroundStyle(.secondary)
                 LabeledContent("Speech models", value: "/Volumes/T9/VG Sentence Mining/Models")
             }
-            Section("Anki") {
-                TextField("Deck", text: $model.deck)
-                Button("Check AnkiConnect", action: model.checkAnki)
-                Text("Uses the Basic note type with Front and Back fields. Keep Anki open with AnkiConnect enabled.").font(.caption).foregroundStyle(.secondary)
-            }
+            AnkiSettingsSection(model: model)
             Section("Word pronunciation") {
                 LabeledContent("Model", value: "MiniMax Speech 2.6 HD")
                 if model.hasReplicateToken {
@@ -287,9 +289,10 @@ struct SettingsView: View {
                 } else {
                     Button("Set up Replicate…") { showingKeySetup = true }
                 }
-                Text("Generated word audio goes on the Anki front. The original sentence audio stays on the back.").font(.caption).foregroundStyle(.secondary)
             }
             Button("Save", action: model.saveSettings)
+                .disabled(model.refreshingAnki || !model.loadingAnkiFields.isEmpty)
+            if let status = model.settingsStatus { Text(status).font(.caption).foregroundStyle(.secondary) }
         }.formStyle(.grouped)
             .sheet(isPresented: $showingKeySetup) { PronunciationKeyView(model: model) }
             .onDisappear { model.stopVoiceTest() }

@@ -42,8 +42,14 @@ import ScreenCaptureKit
     @Published private(set) var testingVoice = false
     @Published private(set) var voiceTestStatus: String?
     @Published var now = Date()
-    @Published var deckNames: [String] = ["Default"]
-    @Published var deck = UserDefaults.standard.string(forKey: "ankiDeck") ?? "Default"
+    @Published private(set) var ankiCatalog: AnkiCatalog?
+    @Published private(set) var ankiTargets: [GameLanguage: AnkiNoteConfiguration] = [:]
+    @Published private(set) var ankiFields: [String: [String]] = [:]
+    @Published private(set) var refreshingAnki = false
+    @Published private(set) var loadingAnkiFields: Set<GameLanguage> = []
+    @Published private(set) var ankiStatus: String?
+    @Published private(set) var ankiError: String?
+    @Published private(set) var settingsStatus: String?
     @Published var codexPath = UserDefaults.standard.string(forKey: "codexPath") ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".bun/bin/codex").path
     private let speech = LocalSpeechEngine()
     private let translator = CodexTranslator()
@@ -63,6 +69,11 @@ import ScreenCaptureKit
     private var timer: AnyCancellable?
     private var audioSamples = 0
     private var sentWords: [UUID: Set<String>] = [:]
+    private var ankiPreferences: AnkiPreferences = {
+        guard let data = UserDefaults.standard.data(forKey: "ankiExportConfigurations"), let settings = try? JSONDecoder().decode(AnkiPreferences.self, from: data) else { return AnkiPreferences() }
+        return settings
+    }()
+    private var ankiFieldRequests: [GameLanguage: UUID] = [:]
 
     init() {
         do { media = try SessionMedia() } catch { self.error = error.localizedDescription }
@@ -80,8 +91,15 @@ import ScreenCaptureKit
     }
 
     var chosenFrame: Screenshot? { frames.indices.contains(frameIndex) ? frames[frameIndex] : nil }
+    var ankiTargetForSelection: AnkiNoteConfiguration? {
+        guard let selected, let catalog = ankiCatalog,
+              let target = ankiPreferences.configuration(profile: catalog.profileName, language: selected.language),
+              let fields = ankiFields[target.noteTypeName], catalog.decks.contains(target.deckName),
+              (try? target.validate(fields: fields)) != nil else { return nil }
+        return target
+    }
     var canSend: Bool {
-        selected.map { $0.expiresAt > now } == true && chosenFrame != nil && wordAudio != nil && !selectedWord.isEmpty && !definition.isEmpty && !sentenceTranslation.isEmpty && !translating && !sending && exportStatus == nil
+        selected.map { $0.expiresAt > now } == true && ankiTargetForSelection != nil && chosenFrame != nil && wordAudio != nil && !selectedWord.isEmpty && !definition.isEmpty && !sentenceTranslation.isEmpty && !translating && !sending && exportStatus == nil
     }
     var expiresIn: String {
         let seconds = max(0, Int(selected?.expiresAt.timeIntervalSince(now) ?? 0))
@@ -303,7 +321,7 @@ import ScreenCaptureKit
     }
 
     func sendToAnki() {
-        guard canSend, let selected, let media, let frame = chosenFrame, let wordAudio else { return }
+        guard canSend, let selected, let media, let frame = chosenFrame, let wordAudio, let target = ankiTargetForSelection else { return }
         sending = true
         let word = selectedWord, text = sentence
         let explanation = WordExplanation(dictionaryForm: dictionaryForm, definition: definition, sentenceTranslation: sentenceTranslation)
@@ -313,23 +331,90 @@ import ScreenCaptureKit
                 guard selected.expiresAt > Date() else { throw MiningError.message("This sentence has expired.") }
                 let url = try media.audioClip(start: max(0, selected.start - 0.2), end: selected.end + 0.3)
                 let audio = try Data(contentsOf: url), screenshot = try Data(contentsOf: frame.url)
-                let noteID = try await AnkiClient().send(word: word, sentence: text, explanation: explanation, screenshot: screenshot, sentenceAudio: audio, wordAudio: wordAudio, deck: deck)
+                let noteID = try await AnkiClient().send(word: word, sentence: text, explanation: explanation, screenshot: screenshot, sentenceAudio: audio, wordAudio: wordAudio, configuration: target)
                 sentWords[selected.id, default: []].insert(word)
                 if self.selected?.id == selected.id, selectedWord == word { exportStatus = "Sent to Anki · note \(noteID)" }
             } catch { self.error = error.localizedDescription }
         }
     }
 
-    func checkAnki() {
+    func refreshAnki() {
+        guard !refreshingAnki else { return }
+        refreshingAnki = true; ankiError = nil; settingsStatus = nil
         Task {
-            do { deckNames = try await AnkiClient().decks(); if !deckNames.contains(deck), let first = deckNames.first { deck = first } }
-            catch { self.error = error.localizedDescription }
+            defer { refreshingAnki = false }
+            do {
+                let client = AnkiClient()
+                let catalog = try await client.catalog()
+                var targets: [GameLanguage: AnkiNoteConfiguration] = [:], fieldsByType: [String: [String]] = [:]
+                for language in GameLanguage.allCases {
+                    let stored = ankiPreferences.configuration(profile: catalog.profileName, language: language)
+                    let draft = ankiCatalog?.profileName == catalog.profileName ? ankiTargets[language] : nil
+                    var target = draft ?? stored ?? .suggested(profile: catalog.profileName, language: language, decks: catalog.decks, noteTypes: catalog.noteTypes)
+                    if !target.noteTypeName.isEmpty, catalog.noteTypes.contains(target.noteTypeName) {
+                        let fields: [String]
+                        if let cached = fieldsByType[target.noteTypeName] { fields = cached }
+                        else { fields = try await client.fields(noteType: target.noteTypeName); fieldsByType[target.noteTypeName] = fields }
+                        if target.mapping.isEmpty { target.mapping = AnkiNoteConfiguration.suggestedMapping(fields: fields) }
+                    }
+                    targets[language] = target
+                }
+                guard try await client.activeProfile() == catalog.profileName else { throw MiningError.message("Anki changed profiles. Refresh to reconnect.") }
+                ankiFieldRequests.removeAll(); loadingAnkiFields.removeAll()
+                ankiCatalog = catalog; ankiTargets = targets; ankiFields = fieldsByType
+                ankiStatus = "Connected to Anki. Save your export choices for this profile."
+            } catch {
+                ankiCatalog = nil; ankiTargets.removeAll(); ankiFields.removeAll()
+                ankiError = error.localizedDescription
+            }
         }
+    }
+
+    func updateAnkiConfiguration(_ configuration: AnkiNoteConfiguration, for language: GameLanguage) {
+        let previousType = ankiTargets[language]?.noteTypeName
+        var updated = configuration
+        settingsStatus = nil; ankiError = nil
+        if previousType == updated.noteTypeName { ankiTargets[language] = updated; return }
+        updated.mapping = [:]; ankiTargets[language] = updated
+        let id = UUID(); ankiFieldRequests[language] = id
+        guard !updated.noteTypeName.isEmpty else { loadingAnkiFields.remove(language); return }
+        loadingAnkiFields.insert(language)
+        Task {
+            defer { if ankiFieldRequests[language] == id { loadingAnkiFields.remove(language) } }
+            do {
+                let client = AnkiClient()
+                let fields = try await client.fields(noteType: updated.noteTypeName)
+                guard try await client.activeProfile() == updated.profileName else { throw MiningError.message("Anki changed profiles. Refresh to reconnect.") }
+                guard ankiFieldRequests[language] == id, ankiCatalog?.profileName == updated.profileName, ankiTargets[language]?.noteTypeName == updated.noteTypeName else { return }
+                var target = ankiTargets[language]!
+                target.mapping = AnkiNoteConfiguration.suggestedMapping(fields: fields)
+                ankiFields[target.noteTypeName] = fields; ankiTargets[language] = target
+            } catch { if ankiFieldRequests[language] == id { ankiError = error.localizedDescription } }
+        }
+    }
+
+    func suggestAnkiMapping(for language: GameLanguage) {
+        guard var target = ankiTargets[language], let fields = ankiFields[target.noteTypeName] else { return }
+        target.mapping = AnkiNoteConfiguration.suggestedMapping(fields: fields)
+        ankiTargets[language] = target; settingsStatus = nil
     }
 
     func saveSettings() {
         UserDefaults.standard.set(codexPath, forKey: "codexPath")
-        UserDefaults.standard.set(deck, forKey: "ankiDeck")
+        do {
+            guard !refreshingAnki, loadingAnkiFields.isEmpty else { throw MiningError.message("Wait for Anki discovery to finish before saving.") }
+            var preferences = ankiPreferences
+            for (language, target) in ankiTargets {
+                try target.validate(fields: ankiFields[target.noteTypeName] ?? [])
+                preferences.set(target, for: language)
+            }
+            let data = try JSONEncoder().encode(preferences)
+            UserDefaults.standard.set(data, forKey: "ankiExportConfigurations")
+            ankiPreferences = preferences
+            objectWillChange.send()
+            settingsStatus = "Settings saved."
+            ankiError = nil
+        } catch { ankiError = error.localizedDescription; settingsStatus = nil }
     }
 
     func dismissSelection() { clearSelection() }

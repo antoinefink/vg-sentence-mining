@@ -19,13 +19,15 @@ The preview opens beside the transcript. Close it to give the transcript the ful
 - Speech models live at `/Volumes/T9/VG Sentence Mining/Models`. The first launch downloads the pinned FluidAudio transcription and speaker models; later launches reuse them.
 - Transcription uses Parakeet v3 through FluidAudio. Speaker labels are anonymous and can be imperfect, especially over music, sound effects and overlapping voices.
 - English assistance runs the installed Codex CLI using its existing login. Configure the executable in Settings if needed. Codex sends the selected text to OpenAI; speech recognition runs on the Mac.
-- AnkiConnect must listen on `127.0.0.1:8765`. Export uses the **Basic** note type, **Front** and **Back** fields, and the deck set in Settings (initially **Default**).
+- AnkiConnect must listen on `127.0.0.1:8765`. In Settings, refresh the available decks and note types, choose a destination for each language, review the field mapping, then choose **Save**. Choices are stored separately for each Anki profile and language. Settings can be resized.
 - Word pronunciation uses [MiniMax Speech 2.6 HD on Replicate](https://replicate.com/minimax/speech-2.6-hd), with native German and Spanish voices. Enter your Replicate API key in the app's secure setup sheet or Settings. It is stored in macOS Keychain on this device, never in preferences or a project file.
 - macOS controls capture permission and window selection. Choose the source again after restarting the app.
 
 ## Word audio and card layout
 
-The Anki front contains only generated pronunciation of the selected word, matching the existing audio-first study format. The back contains the word, dictionary form, definition, original sentence, English translation, screenshot and original recorded sentence audio.
+The app uses your selected note type without changing its templates. For the current profile, the suggested destinations are the German and Spanish **Mining** decks with **Migaku German Custom** and **Migaku Spanish Custom**. Their audio vocabulary mode shows the target word and generated pronunciation on the front, with the sentence, translation, definition, screenshot and original recording on the back.
+
+Expand **Field mapping** to change where each item goes. Dictionary form and definition may share **Definitions**. Both generated word audio and recorded sentence audio are required; other items can be omitted. **Basic** is also supported, with word audio on **Front** and the remaining content on **Back**. Refreshing and saving Settings do not modify Anki. Only **Send to Anki** creates a note. Export checks that the active profile still matches the saved destination.
 
 After a key is configured, choosing a word generates its pronunciation. You can listen with **Play word** before exporting. Settings also provides **Test German voice** and **Test Spanish voice**. Export waits for valid word audio; a failed generation offers a retry.
 
@@ -64,7 +66,7 @@ Use `es` for Spanish. Models must be on the connected T9 drive.
 
 The regression suite covers overlapping recognition windows, real repeated words, short words with overlapping timings, speaker boundaries, HTML escaping, original audio extraction and physical media expiry.
 
-Fifteen tests pass, including Replicate request language and native voice selection, trusted output URLs, provider error redaction, Anki audio placement and a real Keychain save/replace/remove round trip using a disposable fixture key. A native check with a delayed CLI also verifies that changing the original sentence rejects its old explanation and that an in-flight response preserves manually edited English. Capture exits discard recognition buffers; partial audio participates in expiry. Idle capture frames reuse the last valid image, while blank or suspended frames invalidate it.
+Twenty-two tests pass, including Replicate request language and native voice selection, trusted output URLs, provider error redaction, Basic and Migaku export payloads, read-only Anki discovery, profile isolation, saved mappings and a real Keychain save/replace/remove round trip using a disposable fixture key. A native check with a delayed CLI also verifies that changing the original sentence rejects its old explanation and that an in-flight response preserves manually edited English. Capture exits discard recognition buffers; partial audio participates in expiry. Idle capture frames reuse the last valid image, while blank or suspended frames invalidate it.
 
 The supplied German video was tested through QuickTime and the live capture pipeline. A paced transcription run measured 1.7 seconds median arrival delay and 3.4 seconds at the 95th percentile, with a 6.8-second maximum on this Mac. These are fixture measurements; game audio and system load affect results. German and Spanish audio fixtures both produced dialogue. Live Codex explanations and Anki image/audio storage were also checked.
 
@@ -72,7 +74,7 @@ The user-approved prerecorded video serves as the repeatable capture test. GeFor
 
 A full 30-minute live game soak and forced ScreenCaptureKit interruption test have not been performed. Buffer expiry is verified with simulated timestamps and actual file deletion.
 
-The new audio-only Front passes local AnkiConnect's note validation. Live MiniMax pronunciation and a generated-word Anki playback check require the user's Replicate key and remain unverified until configured.
+The user confirmed live MiniMax pronunciation works from Settings. The current daily Anki profile's deck names, fields and templates were inspected read-only. Configurable export is verified with mocked AnkiConnect responses; no notes, decks, templates or media were modified in that profile during this change.
 
 ## Icon
 

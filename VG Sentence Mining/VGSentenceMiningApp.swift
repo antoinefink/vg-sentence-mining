@@ -10,6 +10,20 @@ import SwiftUI
         }
         .defaultSize(width: 1120, height: 800)
         .windowStyle(.hiddenTitleBar)
-        Settings { SettingsView(model: model).frame(width: 530).padding(24) }
+        .commands { MiningSettingsCommands() }
+        Window("Settings", id: "settings") { SettingsView(model: model).frame(minWidth: 560, minHeight: 480).padding(16) }
+            .defaultSize(width: 660, height: 800)
+            .windowResizability(.contentMinSize)
+            .defaultLaunchBehavior(.suppressed)
+    }
+}
+
+private struct MiningSettingsCommands: Commands {
+    @Environment(\.openWindow) private var openWindow
+    var body: some Commands {
+        CommandGroup(replacing: .appSettings) {
+            Button("Settings…") { openWindow(id: "settings") }
+                .keyboardShortcut(",", modifiers: .command)
+        }
     }
 }
