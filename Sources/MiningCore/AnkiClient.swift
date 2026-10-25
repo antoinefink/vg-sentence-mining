@@ -37,7 +37,7 @@ public struct AnkiClient: Sendable {
         let id = UUID().uuidString.lowercased()
         var values = Dictionary(uniqueKeysWithValues: fieldNames.map { ($0, "") })
         for role in AnkiFieldRole.allCases {
-            guard let field = configuration.mapping[role], !field.isEmpty else { continue }
+            guard let field = role.isAutomatic ? role.suggestedField(in: fieldNames) : configuration.mapping[role], !field.isEmpty else { continue }
             let content: String
             switch role {
             case .word: content = CardHTML.escape(word)

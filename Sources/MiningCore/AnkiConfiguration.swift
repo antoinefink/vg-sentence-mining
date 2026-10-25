@@ -19,6 +19,7 @@ public enum AnkiFieldRole: String, CaseIterable, Codable, Sendable {
     }
 
     public var required: Bool { self == .wordAudio || self == .sentenceAudio }
+    public var isAutomatic: Bool { self == .vocabularyCard || self == .audioCard }
     private var aliases: [String] {
         switch self {
         case .word: ["Target Word", "Word", "Expression"]
@@ -34,7 +35,7 @@ public enum AnkiFieldRole: String, CaseIterable, Codable, Sendable {
         }
     }
 
-    fileprivate func suggestedField(in fields: [String]) -> String? {
+    func suggestedField(in fields: [String]) -> String? {
         func normalized(_ value: String) -> String { value.lowercased().filter { $0.isLetter || $0.isNumber } }
         for alias in aliases {
             if let field = fields.first(where: { normalized($0) == normalized(alias) }) { return field }
@@ -72,7 +73,7 @@ public struct AnkiNoteConfiguration: Codable, Equatable, Sendable {
         for role in AnkiFieldRole.allCases where role.required {
             guard let field = mapping[role], !field.isEmpty else { throw MiningError.message("Choose an Anki field for \(role.title.lowercased()).") }
         }
-        for field in mapping.values where !field.isEmpty && !fields.contains(field) {
+        for (role, field) in mapping where !role.isAutomatic && !field.isEmpty && !fields.contains(field) {
             throw MiningError.message("The Anki field “\(field)” is missing. Refresh Anki and check the mapping.")
         }
     }

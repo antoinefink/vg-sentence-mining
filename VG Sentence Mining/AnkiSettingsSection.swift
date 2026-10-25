@@ -42,7 +42,7 @@ struct AnkiSettingsSection: View {
                         HStack { ProgressView().controlSize(.small); Text("Reading note fields…") }
                     } else if let fields = model.ankiFields[target.wrappedValue.noteTypeName] {
                         DisclosureGroup("Field mapping", isExpanded: $showingMapping) {
-                            ForEach(AnkiFieldRole.allCases, id: \.self) { role in
+                            ForEach(AnkiFieldRole.allCases.filter { !$0.isAutomatic }, id: \.self) { role in
                                 Picker(role.title, selection: fieldBinding(role)) {
                                     Text(role.required ? "Choose a field…" : "Do not export").tag("")
                                     ForEach(fields, id: \.self) { Text($0).tag($0) }
@@ -52,7 +52,6 @@ struct AnkiSettingsSection: View {
                                 }
                             }
                             Button("Use suggested mapping") { model.suggestAnkiMapping(for: language) }
-                            Text("Both audio fields are required. Several items can share a field. Mode fields receive “1” for Migaku audio vocabulary cards.").font(.caption).foregroundStyle(.secondary)
                         }
                     }
                 }.disabled(model.refreshingAnki)

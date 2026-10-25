@@ -195,7 +195,9 @@ private final class MockProtocol: URLProtocol, @unchecked Sendable {
             }
             return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, try JSONSerialization.data(withJSONObject: ["result": result, "error": NSNull()]))
         }
-        let configuration = AnkiNoteConfiguration(profileName: "Fixture", deckName: "German::Mining", noteTypeName: "Migaku German Custom", mapping: AnkiNoteConfiguration.suggestedMapping(fields: names))
+        var configuration = AnkiNoteConfiguration(profileName: "Fixture", deckName: "German::Mining", noteTypeName: "Migaku German Custom", mapping: AnkiNoteConfiguration.suggestedMapping(fields: names))
+        configuration.mapping[.vocabularyCard] = "Old field"
+        configuration.mapping[.audioCard] = "Target Word"
         _ = try await AnkiClient(session: network).send(word: "<Wort>", sentence: "Ein <Satz>.", explanation: .init(dictionaryForm: "das Wort", definition: "word & term", sentenceTranslation: "A sentence."), screenshot: Data([1]), sentenceAudio: Data([2]), wordAudio: Data([3]), configuration: configuration)
         let requests = captured.withLock { $0 }
         let body = try JSONSerialization.jsonObject(with: requests.last!.httpBody!) as! [String: Any]

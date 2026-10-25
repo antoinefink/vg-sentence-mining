@@ -25,7 +25,7 @@ The preview opens beside the transcript. Close it to give the transcript the ful
 
 ## Word audio and card layout
 
-The app uses your selected note type without changing its templates. For the current profile, the suggested destinations are the German and Spanish **Mining** decks with **Migaku German Custom** and **Migaku Spanish Custom**. Their audio vocabulary mode shows the target word and generated pronunciation on the front, with the sentence, translation, definition, screenshot and original recording on the back.
+The app uses your selected note type without changing its templates. For the current profile, the suggested destinations are the German and Spanish **Mining** decks with **Migaku German Custom** and **Migaku Spanish Custom**. The app sets their layout switches automatically: the front shows the target word and generated pronunciation; the back shows the sentence, translation, definition, screenshot and original recording.
 
 Expand **Field mapping** to change where each item goes. Dictionary form and definition may share **Definitions**. Both generated word audio and recorded sentence audio are required; other items can be omitted. **Basic** is also supported, with word audio on **Front** and the remaining content on **Back**. Refreshing and saving Settings do not modify Anki. Only **Send to Anki** creates a note. Export checks that the active profile still matches the saved destination.
 
