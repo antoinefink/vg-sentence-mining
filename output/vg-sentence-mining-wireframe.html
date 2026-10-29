@@ -1,0 +1,94 @@
+<meta charset="utf-8">
+<style>
+#vg-mining-sketch { color-scheme: light dark; --vg-bg: light-dark(#ffffff,#232323); --vg-chrome: light-dark(#f1f1f1,#303030); --vg-line: light-dark(#d8d8d8,#505050); --vg-ink: light-dark(#242424,#f0f0f0); --vg-muted: light-dark(#626262,#bcbcbc); --vg-selected: light-dark(#e5e5e5,#414141); font: 14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; color: var(--vg-ink); }
+#vg-mining-sketch * { box-sizing: border-box; }
+#vg-mining-sketch .vg-note { font-size: 12px; color: var(--vg-muted); margin-bottom: 10px; }
+#vg-mining-sketch .vg-window { border: 1px solid var(--vg-line); border-radius: 10px; overflow: hidden; background: var(--vg-bg); }
+#vg-mining-sketch .vg-toolbar { background: var(--vg-chrome); display:flex; flex-wrap:wrap; align-items:center; gap:12px; padding:16px 20px; border-bottom:1px solid var(--vg-line); padding-right:100px; }
+#vg-mining-sketch .vg-title { font-weight: 600; flex:1 1 240px; }
+#vg-mining-sketch .vg-control { display:inline-flex; align-items:center; justify-content:center; border:1px solid var(--vg-line); border-radius:5px; padding:4px 10px; background:var(--vg-bg); font-size:12px; gap:6px; }
+#vg-mining-sketch .vg-status { font-size:12px; color:var(--vg-muted); }
+#vg-mining-sketch .vg-layout { display:grid; grid-template-columns: minmax(0,1.08fr) minmax(0,1fr); }
+#vg-mining-sketch .vg-transcript { border-right:1px solid var(--vg-line); }
+#vg-mining-sketch .vg-panel-title { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:8px; padding:16px 20px; border-bottom:1px solid var(--vg-line); font-weight:600; }
+#vg-mining-sketch .vg-sub { font-size:12px; color:var(--vg-muted); font-weight:400; }
+#vg-mining-sketch .vg-row { padding:18px 20px; border-bottom:1px solid var(--vg-line); }
+#vg-mining-sketch .vg-meta { display:flex; flex-wrap:wrap; gap:10px; color:var(--vg-muted); font-size:12px; margin-bottom:8px; font-variant-numeric:tabular-nums; }
+#vg-mining-sketch .vg-row p { margin:0; font-size:16px; }
+#vg-mining-sketch .vg-row.vg-current { background:var(--vg-selected); border-left:3px solid var(--vg-ink); padding-left:17px; }
+#vg-mining-sketch mark { color:var(--vg-bg); background:var(--vg-ink); padding:1px 3px; border-radius:3px; }
+#vg-mining-sketch .vg-latest { color:var(--vg-muted); }
+#vg-mining-sketch .vg-caption { margin-top:10px; font-size:12px; color:var(--vg-muted); }
+#vg-mining-sketch .vg-review { padding:18px 20px; }
+#vg-mining-sketch .vg-screenshot { display:flex; flex-direction:column; justify-content:center; align-items:center; min-height:145px; aspect-ratio:16/7; border:1px dashed var(--vg-muted); background:var(--vg-chrome); gap:8px; margin-bottom:8px; }
+#vg-mining-sketch .vg-frame-row { display:flex; flex-wrap:wrap; gap:8px; justify-content:space-between; font-size:12px; color:var(--vg-muted); }
+#vg-mining-sketch .vg-field { margin-top:16px; }
+#vg-mining-sketch .vg-label { color:var(--vg-muted); font-size:12px; margin-bottom:4px; }
+#vg-mining-sketch .vg-value { border:1px solid var(--vg-line); border-radius:5px; padding:8px 10px; overflow-wrap:anywhere; }
+#vg-mining-sketch .vg-lemma { display:flex; flex-wrap:wrap; gap:10px; align-items:baseline; }
+#vg-mining-sketch .vg-word { font-weight:600; font-size:20px; }
+#vg-mining-sketch .vg-audio { display:flex; flex-wrap:wrap; gap:10px; align-items:center; padding:10px 0; }
+#vg-mining-sketch .vg-track { height:6px; background:var(--vg-line); flex:1 1 100px; border-radius:4px; }
+#vg-mining-sketch .vg-track span { display:block; width:28%; height:6px; background:var(--vg-muted); border-radius:4px; }
+#vg-mining-sketch .vg-send { background:var(--vg-ink); color:var(--vg-bg); padding:7px 18px; border-radius:5px; font-size:13px; white-space:nowrap; }
+#vg-mining-sketch .vg-actions { border-top:1px solid var(--vg-line); padding-top:16px; margin-top:16px; display:flex; gap:10px; flex-wrap:wrap; justify-content:space-between; align-items:center; }
+#vg-mining-sketch .vg-footer { padding:10px 20px; background:var(--vg-chrome); border-top:1px solid var(--vg-line); display:flex; flex-wrap:wrap; justify-content:space-between; gap:8px; font-size:12px; color:var(--vg-muted); }
+@media(max-width:620px) { #vg-mining-sketch .vg-layout { grid-template-columns:minmax(0,1fr); } #vg-mining-sketch .vg-transcript { border-right:0; border-bottom:1px solid var(--vg-line); } #vg-mining-sketch .vg-toolbar { padding-right:20px; } }
+</style>
+<div id="vg-mining-sketch" role="img" aria-label="Directional desktop wireframe for VG Sentence Mining. Recent German dialogue appears on the left. The selected word aufgegeben opens a card preview on the right with a screenshot, the dictionary form aufgeben, an English definition, a translated sentence, and the original audio. Controls are display-only. All dialogue and statuses are illustrative.">
+  <div class="vg-note">Directional wireframe · illustrative dialogue and statuses · one-monitor workflow</div>
+  <div class="vg-window">
+    <div class="vg-toolbar">
+      <div class="vg-title">VG Sentence Mining</div>
+      <span class="vg-control">GeForce Now</span>
+      <span class="vg-status">Recording</span>
+      <span class="vg-control">Stop capture</span>
+    </div>
+    <div class="vg-layout">
+      <section class="vg-transcript" aria-label="Recent dialogue">
+        <div class="vg-panel-title">Recent dialogue <span class="vg-sub">German · Last 30 minutes</span></div>
+        <div class="vg-row">
+          <div class="vg-meta"><span>08:34</span><span>Speaker 1</span></div>
+          <p lang="de">Wir müssen einen anderen Weg finden.</p>
+        </div>
+        <div class="vg-row">
+          <div class="vg-meta"><span>08:39</span><span>Speaker 2</span></div>
+          <p lang="de">Die Brücke ist seit gestern gesperrt.</p>
+        </div>
+        <div class="vg-row vg-current">
+          <div class="vg-meta"><span>08:44</span><span>Speaker 1</span><span>Selected sentence</span></div>
+          <p lang="de">Ich habe die Hoffnung noch nicht <mark>aufgegeben</mark>.</p>
+          <div class="vg-caption">Word selected → card preview</div>
+        </div>
+        <div class="vg-row">
+          <div class="vg-meta"><span>08:51</span><span>Speaker 2</span></div>
+          <p lang="de">Dann sollten wir keine Zeit verlieren.</p>
+        </div>
+        <div class="vg-row vg-latest">
+          <div class="vg-meta"><span>08:56</span><span>Transcribing…</span></div>
+          <p lang="de">Vielleicht gibt es…</p>
+        </div>
+        <div class="vg-row">
+          <div class="vg-caption">New dialogue continues below.<br>The selected sentence stays in place while you review.</div>
+        </div>
+      </section>
+      <section aria-label="Anki card preview">
+        <div class="vg-panel-title">Card preview <span class="vg-sub">Expires in 29:48</span></div>
+        <div class="vg-review">
+          <div class="vg-screenshot"><span>Game screenshot</span><span class="vg-sub">Frame captured at 08:44</span></div>
+          <div class="vg-frame-row"><span>‹ Previous frame</span><span>Next frame ›</span></div>
+          <div class="vg-field">
+            <div class="vg-label">Selected word</div>
+            <div class="vg-lemma"><span class="vg-word" lang="de">aufgegeben</span><span class="vg-sub" lang="de">aufgeben · verb</span></div>
+          </div>
+          <div class="vg-field"><div class="vg-label">Meaning in this sentence · English</div><div class="vg-value">to give up; to abandon hope</div></div>
+          <div class="vg-field"><div class="vg-label">Sentence</div><div class="vg-value" lang="de">Ich habe die Hoffnung noch nicht aufgegeben.</div></div>
+          <div class="vg-field"><div class="vg-label">Translation · English</div><div class="vg-value">I haven't given up hope yet.</div></div>
+          <div class="vg-field"><div class="vg-label">Original audio · sentence clip</div><div class="vg-audio"><span class="vg-control">Play</span><span class="vg-track"><span></span></span><span class="vg-sub">5.9 s</span><span class="vg-control">Adjust clip</span></div></div>
+          <div class="vg-actions"><span class="vg-sub">Deck: German</span><span class="vg-send">Send to Anki</span></div>
+        </div>
+      </section>
+    </div>
+    <div class="vg-footer"><span>Game capture continues while you review</span><span>Model files: T9 · Anki connected</span></div>
+  </div>
+</div>
