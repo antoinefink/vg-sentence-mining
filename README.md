@@ -16,8 +16,8 @@ The preview opens beside the transcript. Close it to give the transcript the ful
 
 ## Local setup
 
-- Speech models live at `/Volumes/T9/VG Sentence Mining/Models`. The first launch downloads Whisper large-v3 Turbo and the speaker model; later launches reuse them.
-- Transcription uses one local model, Whisper large-v3 Turbo, through pinned WhisperKit 1.1.1. German and Spanish are selected explicitly. FluidAudio provides anonymous speaker labels, which can be imperfect over music, sound effects and overlapping voices.
+- Choose **Transcription → Model** in Settings: **Parakeet Ultra** (the default, fastest in our German tests), **Whisper Large V3**, or **Qwen3-ASR 1.7B (Experimental)**. Stop capture before switching. The choice saves immediately, unloads the previous ASR process, and loads only the selected model.
+- Models live at `/Volumes/T9/VG Sentence Mining/Models`; the offline Python/Metal/MLX runtime lives at `/Volumes/T9/VG Sentence Mining/SpeechRuntime`. See [runtime setup](tools/SpeechRuntime/README.md). German and Spanish are selected explicitly. FluidAudio provides anonymous speaker labels, which can be imperfect over music, sound effects and overlapping voices.
 - English assistance runs the installed Codex CLI using its existing login. Configure the executable in Settings if needed. Codex sends the selected text to OpenAI; speech recognition runs on the Mac.
 - AnkiConnect must listen on `127.0.0.1:8765`. In Settings, refresh the available decks and note types, choose a destination for each language, review the field mapping, then choose **Save**. Choices are stored separately for each Anki profile and language. Settings can be resized.
 - Word pronunciation offers [MiniMax Speech 2.8 HD](https://replicate.com/minimax/speech-2.8-hd), [ElevenLabs v3](https://replicate.com/elevenlabs/v3) and [Inworld Realtime TTS 2](https://replicate.com/inworld/realtime-tts-2) through Replicate. All three support German and Spanish, with an explicit language setting for single words. Enter your Replicate API key in the app's secure setup sheet or Settings. It is stored in macOS Keychain on this device, never in preferences or a project file.
@@ -37,20 +37,23 @@ glossary** in Settings. **No glossary** clears the recognition hint. Selecting,
 editing or deleting a glossary affects new recognition windows; existing
 dialogue stays as captured. Deleting the current preset selects **No glossary**.
 
-Glossary terms stay local and are passed to Whisper as prompt tokens. They guide
-recognition, but some names may still need correction. Use about 5–10 unusual
-names or places for faster transcription. WhisperKit uses up to 111 prompt tokens
-from the end of a long list. A timing adapter corrects
-WhisperKit 1.1.1's alignment offset when a glossary prompt is present.
+Glossary terms stay local. Whisper and Qwen accept the list as recognition hints;
+Parakeet Ultra does not support them in this runtime. The header shows
+**Glossary unavailable** with Ultra, and saved presets remain available when you
+switch models. Hints guide recognition, but names can still need correction.
+Use about 5–10 unusual names or places; requests use up to 32 entries and 512
+characters from the start of the list.
 
-Capture continues while recognition runs. A single recognition worker processes
-the latest eight-second audio window, rather than queuing every recognition
-window behind a slow result.
+Capture continues while recognition runs. Overlapping eight-second windows
+retain unprocessed audio until decoding completes. A bounded 32-second buffer
+reports sustained overload instead of silently skipping unprocessed audio.
+Qwen's aligned words retain transcript punctuation; malformed timestamps are
+repaired approximately within the audio window.
 
 The speech probe accepts the same pasted-list format:
 
 ```sh
-xcrun swift run -c release speech-probe sample.wav de --glossary /path/to/glossary.txt
+xcrun swift run -c release speech-probe sample.wav de --model whisper-large-v3 --glossary /path/to/glossary.txt
 ```
 
 ## Word audio and card layout
@@ -94,9 +97,9 @@ Use `es` for Spanish. Models must be on the connected T9 drive.
 
 ## Verified behavior
 
-The regression suite covers overlapping recognition windows, real repeated words, short words with overlapping timings, speaker boundaries, HTML escaping, original audio extraction and physical media expiry.
+The regression suite covers contiguous recognition under backlog, final audio tails, bounded overload, overlapping recognition windows, real repeated words, short words with overlapping timings, speaker boundaries, HTML escaping, original audio extraction and physical media expiry.
 
-Twenty-eight core tests cover glossary paste formats, Unicode, persistence, selection and deletion, separate temporary-media directories for app bundles, safe cleanup of pre-upgrade captures, Replicate requests, trusted output URLs, provider error redaction, Basic and Migaku export payloads, read-only Anki discovery, profile isolation, saved mappings and a disposable Keychain round trip. The optional speech integration test uses synthetic German and Spanish fixtures to verify all five game names have valid word timings, glossary switching clears the previous hint, and digital silence produces no words. Run it with `VG_SPEECH_INTEGRATION=1 xcrun swift test -c release`; it requires T9 and the downloaded local models.
+Core tests cover glossary paste formats, Unicode, persistence, selection and deletion, separate temporary-media directories for app bundles, safe cleanup of pre-upgrade captures, Replicate requests, trusted output URLs, provider error redaction, Basic and Migaku export payloads, read-only Anki discovery, profile isolation, saved mappings and a disposable Keychain round trip. The optional speech integration test switches through all three models using synthetic German and Spanish fixtures. It verifies word timings, all five glossary names for the two supporting models, cleared hints, and digital silence. Run it with `VG_SPEECH_INTEGRATION=1 xcrun swift test -c release`; it requires T9 and the downloaded local models.
 
 A native check with a delayed CLI also verifies that changing the original sentence rejects its old explanation and that an in-flight response preserves manually edited English. Capture exits discard recognition buffers; partial audio participates in expiry. Idle capture frames reuse the last valid image, while blank or suspended frames invalidate it.
 

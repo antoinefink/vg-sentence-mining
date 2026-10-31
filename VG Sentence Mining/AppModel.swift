@@ -6,6 +6,8 @@ import MiningSpeech
 import ScreenCaptureKit
 
 @MainActor final class AppModel: ObservableObject {
+    @Published private(set) var transcriptionModel = TranscriptionModel(rawValue: UserDefaults.standard.string(forKey: "transcriptionModel") ?? "") ?? .parakeetUltra
+    var canChangeTranscriptionModel: Bool { !loadingModels && !recording && !starting && !stopping && !choosingWindow }
     @Published var language: GameLanguage = .german
     @Published var glossaryPreferences: GameGlossaryPreferences = {
         guard let data = UserDefaults.standard.data(forKey: "gameGlossaries"),
@@ -132,17 +134,25 @@ import ScreenCaptureKit
     }
 
     func loadModels() {
-        guard !loadingModels else { return }
+        guard canChangeTranscriptionModel else { return }
         loadingModels = true
-        status = "Loading local models from T9. The first download can take a few minutes."
+        modelsReady = false
+        status = "Loading \(transcriptionModel.name) from T9…"
         Task {
             defer { loadingModels = false }
             do {
-                try await speech.prepare(modelDirectory: URL(fileURLWithPath: "/Volumes/T9/VG Sentence Mining/Models"))
+                try await speech.prepare(modelDirectory: URL(fileURLWithPath: "/Volumes/T9/VG Sentence Mining/Models"), model: transcriptionModel)
                 modelsReady = true
-                status = "Local speech models ready. Choose the game window."
+                status = "\(transcriptionModel.name) ready. Choose the game window."
             } catch { self.error = error.localizedDescription; status = "Models could not load." }
         }
+    }
+
+    func setTranscriptionModel(_ model: TranscriptionModel) {
+        guard model != transcriptionModel, canChangeTranscriptionModel else { return }
+        transcriptionModel = model
+        UserDefaults.standard.set(model.rawValue, forKey: "transcriptionModel")
+        loadModels()
     }
 
     func chooseWindow() {
@@ -220,9 +230,11 @@ import ScreenCaptureKit
                 recognitionTask?.cancel()
                 await recognitionTask?.value
                 self.error = error.localizedDescription
-                status = "Capture stopped."
+                status = "Capture stopped. Reload the speech model in Settings before starting again."
                 try? await capture.stop()
                 try? media.flush()
+                await speech.unload()
+                modelsReady = false
             }
             await speech.discardSession()
             recording = false; stopping = false

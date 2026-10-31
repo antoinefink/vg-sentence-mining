@@ -279,11 +279,22 @@ struct SettingsView: View {
     @State private var showingKeySetup = false
     var body: some View {
         Form {
+            Section("Transcription") {
+                Picker("Model", selection: Binding(get: { model.transcriptionModel }, set: model.setTranscriptionModel)) {
+                    ForEach(TranscriptionModel.allCases, id: \.self) { choice in
+                        Text(choice.name + (choice.isExperimental ? " (Experimental)" : "")).tag(choice)
+                    }
+                }.disabled(!model.canChangeTranscriptionModel)
+                Text(model.transcriptionModel.detail).font(.caption).foregroundStyle(.secondary)
+                Text("All three run locally. Models and runtime stay on T9; only the selected model is loaded. Stop capture before switching.")
+                    .font(.caption).foregroundStyle(.secondary)
+                if model.loadingModels { HStack { ProgressView().controlSize(.small); Text("Loading model…") } }
+                else if !model.modelsReady { Button("Reload model", action: model.loadModels) }
+            }
             GameGlossarySettingsSection(model: model)
             Section("Language assistance") {
                 TextField("Codex CLI", text: $model.codexPath)
                 Text("Codex uses your existing login. Selected text is sent to its OpenAI service; game audio stays local.").font(.caption).foregroundStyle(.secondary)
-                LabeledContent("Speech models", value: "/Volumes/T9/VG Sentence Mining/Models")
             }
             AnkiSettingsSection(model: model)
             Section("Word pronunciation") {

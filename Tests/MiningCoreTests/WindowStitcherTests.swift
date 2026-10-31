@@ -1,6 +1,17 @@
 import Testing
 @testable import MiningCore
 
+@Test func repeatedSingleWordWithoutTemporalOverlapDoesNotAnchor() {
+    var stitcher = WindowStitcher()
+    _ = stitcher.append([.init(text: "Ja.", start: 3, end: 3.3)], through: 3.3)
+    let next: [SpokenWord] = [
+        .init(text: "Nein.", start: 3.4, end: 3.6),
+        .init(text: "Ja.", start: 3.7, end: 4),
+        .init(text: "Weiter.", start: 4.2, end: 4.5),
+    ]
+    #expect(stitcher.append(next, through: 4.5).map(\.text) == ["Nein.", "Ja.", "Weiter."])
+}
+
 @Test func shiftedWindowDoesNotDuplicateNegation() {
     var stitcher = WindowStitcher()
     let first: [SpokenWord] = [

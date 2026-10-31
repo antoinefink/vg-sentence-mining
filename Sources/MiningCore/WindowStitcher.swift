@@ -26,6 +26,7 @@ public struct WindowStitcher: Sendable {
                         error += startDifference + endDifference
                         return Self.normalized(old.text) == Self.normalized(new.text)
                             && startDifference <= 0.9 && endDifference <= 0.9
+                            && (length > 1 || (old.start < new.end && new.start < old.end))
                     }
                     if matches, error < bestError {
                         bestError = error

@@ -16,15 +16,15 @@ struct GameGlossaryPicker: View {
             Divider()
             Button("Edit glossaries…") { openWindow(id: "settings") }
         } label: {
-            Text(model.glossaryPreferences.selected?.displayTitle ?? "No glossary")
+            Text(model.transcriptionModel.supportsGlossary ? (model.glossaryPreferences.selected?.displayTitle ?? "No glossary") : "Glossary unavailable")
                 .lineLimit(1)
         }
         .menuStyle(.borderlessButton)
         .fixedSize(horizontal: false, vertical: true)
         .frame(maxWidth: 180, alignment: .leading)
         .accessibilityLabel("Game glossary")
-        .accessibilityValue(model.glossaryPreferences.selected?.displayTitle ?? "No glossary")
-        .help("Choose a glossary for new dialogue")
+        .accessibilityValue(model.transcriptionModel.supportsGlossary ? (model.glossaryPreferences.selected?.displayTitle ?? "No glossary") : "Not used by Parakeet Ultra")
+        .help(model.transcriptionModel.supportsGlossary ? "Choose a glossary for new dialogue" : "Parakeet Ultra does not use glossary hints. Select Whisper or Qwen in Settings to use this glossary.")
     }
 }
 
@@ -34,6 +34,10 @@ struct GameGlossarySettingsSection: View {
 
     var body: some View {
         Section("Game glossaries") {
+            if !model.transcriptionModel.supportsGlossary {
+                Text("Parakeet Ultra does not use glossary hints. Your presets stay saved for Whisper and Qwen.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
             if model.glossaryPreferences.presets.isEmpty {
                 Text("Save a short glossary for each game to help recognize names, places and unusual terms.")
                     .foregroundStyle(.secondary)
@@ -76,7 +80,7 @@ struct GameGlossarySettingsSection: View {
                     }
                 }
                 LabeledContent("Use for capture") { GameGlossaryPicker(model: model) }
-                Text("Shared by German and Spanish. For faster transcription, use about 5–10 unusual names or places. Very long lists use only the last part. Changes apply to new dialogue.")
+                Text("Shared by German and Spanish. Use about 5–10 unusual names or places. Hints use up to 32 entries and 512 characters from the start of the list. Changes apply to new dialogue.")
                     .font(.caption).foregroundStyle(.secondary)
             }
         }

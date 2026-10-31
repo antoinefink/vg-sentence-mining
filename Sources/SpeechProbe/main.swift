@@ -22,6 +22,7 @@ import MiningSpeech
             let speaker: Int?
         }
         let source: String
+        let model: String
         let language: String
         let realtime: Bool
         let packetMilliseconds: Int
@@ -41,7 +42,16 @@ import MiningSpeech
         let engine = LocalSpeechEngine()
         let root = URL(fileURLWithPath: "/Volumes/T9/VG Sentence Mining/Models", isDirectory: true)
         let loadStart = Date()
-        try await engine.prepare(modelDirectory: root)
+        let modelFlag = CommandLine.arguments.firstIndex(of: "--model")
+        let model: TranscriptionModel
+        if let modelFlag {
+            guard CommandLine.arguments.indices.contains(modelFlag + 1),
+                  let choice = TranscriptionModel(rawValue: CommandLine.arguments[modelFlag + 1]) else {
+                throw MiningError.message("--model must be parakeet-ultra, whisper-large-v3 or qwen3-asr-1.7b.")
+            }
+            model = choice
+        } else { model = .parakeetUltra }
+        try await engine.prepare(modelDirectory: root, model: model)
         print("Models loaded in \(Date().timeIntervalSince(loadStart)) seconds from \(root.path)")
         guard CommandLine.arguments.count > 1, CommandLine.arguments[1] != "--prepare" else { return }
         let language = CommandLine.arguments.count > 2 ? GameLanguage(rawValue: CommandLine.arguments[2]) ?? .german : .german
@@ -138,7 +148,7 @@ import MiningSpeech
                 latencies.isEmpty ? 0 : latencies[min(latencies.count - 1, Int(Double(latencies.count - 1) * value))]
             }
             let report = Report(
-                source: CommandLine.arguments[1], language: language.rawValue, realtime: realtime, packetMilliseconds: packetMilliseconds,
+                source: CommandLine.arguments[1], model: model.rawValue, language: language.rawValue, realtime: realtime, packetMilliseconds: packetMilliseconds,
                 audioSeconds: Double(audio.count) / 16000, elapsedSeconds: Date().timeIntervalSince(start), inferenceSeconds: inferenceSeconds,
                 medianLatencySeconds: percentile(0.5), p95LatencySeconds: percentile(0.95), maxLatencySeconds: latencies.last ?? 0,
                 maxIngestionDelaySeconds: maxIngestionDelay,

@@ -1,19 +1,13 @@
 @preconcurrency import AVFoundation
 @preconcurrency import FluidAudio
-@preconcurrency import WhisperKit
 import Foundation
 import MiningCore
 
 /// A bounded, overlapping recognition window. Only the selected language is decoded.
 public actor LocalSpeechEngine {
-    public static let modelName = "openai_whisper-large-v3-v20240930_turbo"
-    private var recognizer: WhisperKit?
-    private var promptGlossary: [String] = []
-    private var promptTokens: [Int]?
+    private var recognizer: SpeechWorker?
     private var diarizer: LSEENDDiarizer?
-    private var samples: [Float] = []
-    private var totalSamples = 0
-    private var sinceRecognition = 0
+    private var audioBuffer = RecognitionAudioBuffer()
     private var stitcher = WindowStitcher()
     private var diarizerOffset: Double = 0
     private var language: GameLanguage = .german
@@ -21,23 +15,31 @@ public actor LocalSpeechEngine {
 
     public init() {}
 
-    public func prepare(modelDirectory: URL) async throws {
+    public func prepare(modelDirectory: URL, model: TranscriptionModel = .parakeetUltra) async throws {
         guard FileManager.default.fileExists(atPath: "/Volumes/T9") else {
             throw MiningError.message("Connect the T9 drive before loading speech models.")
         }
-        try FileManager.default.createDirectory(at: modelDirectory, withIntermediateDirectories: true)
-        let manager = try await WhisperKit(WhisperKitConfig(
-            model: Self.modelName,
-            downloadBase: modelDirectory.appendingPathComponent("Whisper"),
-            tokenizerFolder: modelDirectory.appendingPathComponent("Whisper"),
-            segmentSeeker: GlossarySegmentSeeker(),
-            verbose: false, prewarm: true, load: true
-        ))
-        let speakers = LSEENDDiarizer()
-        try await speakers.initialize(variant: .dihard3, cacheDirectory: modelDirectory.appendingPathComponent("Speakers"))
-        recognizer = manager
-        promptGlossary = []; promptTokens = nil
-        diarizer = speakers
+        await unload()
+        let runtime = modelDirectory.deletingLastPathComponent().appendingPathComponent("SpeechRuntime", isDirectory: true)
+        let worker = try SpeechWorker(runtime: runtime, model: model)
+        do {
+            try await worker.start()
+            if diarizer == nil {
+                let speakers = LSEENDDiarizer()
+                try await speakers.initialize(variant: .dihard3, cacheDirectory: modelDirectory.appendingPathComponent("Speakers"))
+                diarizer = speakers
+            }
+            recognizer = worker
+        } catch {
+            await worker.shutdown()
+            throw error
+        }
+    }
+
+    public func unload() async {
+        if let recognizer { await recognizer.shutdown() }
+        recognizer = nil
+        discardSession()
     }
 
     public func start(language: GameLanguage) {
@@ -46,72 +48,55 @@ public actor LocalSpeechEngine {
     }
 
     public func discardSession() {
-        samples.removeAll(); totalSamples = 0; sinceRecognition = 0
+        audioBuffer.reset()
         stitcher = WindowStitcher(); diarizerOffset = 0
         diarizer?.reset()
     }
 
     public func ingest(_ audio: [Float]) throws {
         guard let diarizer, recognizer != nil else { throw MiningError.message("Load the local models first.") }
-        samples.append(contentsOf: audio)
-        totalSamples += audio.count
-        sinceRecognition += audio.count
-        if Double(totalSamples) / Double(rate) - diarizerOffset >= 1800 {
+        try audioBuffer.append(audio)
+        if Double(audioBuffer.totalSamples) / Double(rate) - diarizerOffset >= 1800 {
             diarizer.reset()
-            diarizerOffset = Double(totalSamples - audio.count) / Double(rate)
+            diarizerOffset = Double(audioBuffer.totalSamples - audio.count) / Double(rate)
         }
         try diarizer.addAudio(audio, sourceSampleRate: Double(rate))
         _ = try diarizer.process()
-        if samples.count > rate * 8 { samples.removeFirst(samples.count - rate * 8) }
     }
 
     public func recognizePending(glossary: [String] = []) async throws -> [SpokenWord] {
-        guard samples.count >= rate * 4, sinceRecognition >= rate * 2 else { return [] }
-        sinceRecognition = 0
-        return try await recognize(final: false, glossary: glossary)
+        guard let window = audioBuffer.next() else { return [] }
+        let words = try await recognize(window, glossary: glossary)
+        audioBuffer.acknowledge(window)
+        return words
     }
 
     public func finish(glossary: [String] = []) async throws -> [SpokenWord] {
         _ = try diarizer?.finalizeSession()
-        let words = try await recognize(final: true, glossary: glossary)
-        samples.removeAll()
+        var words: [SpokenWord] = []
+        while let window = audioBuffer.next(final: true) {
+            words += try await recognize(window, glossary: glossary)
+            audioBuffer.acknowledge(window)
+        }
+        audioBuffer.reset()
         return words
     }
 
     public func transcribe(_ audio: [Float], language: GameLanguage, glossary: [String] = []) async throws -> [SpokenWord] {
-        guard let recognizer, let tokenizer = recognizer.tokenizer else { throw MiningError.message("Load the local speech models first.") }
+        guard let recognizer else { throw MiningError.message("Load the local speech models first.") }
+        guard !audio.isEmpty else { return [] }
+        guard audio.count <= rate * 32 else { throw MiningError.message("Transcribe at most 32 seconds at a time.") }
         guard audio.contains(where: { abs($0) > 0.00001 }) else { return [] }
-        if glossary != promptGlossary {
-            promptGlossary = glossary
-            promptTokens = glossary.isEmpty ? nil : tokenizer.encode(text: " " + glossary.joined(separator: ", "))
-        }
-        let options = DecodingOptions(
-            language: language.rawValue,
-            temperatureFallbackCount: 1,
-            skipSpecialTokens: true,
-            wordTimestamps: true,
-            windowClipTime: 0,
-            promptTokens: promptTokens,
-            suppressBlank: true
-        )
-        let results = try await recognizer.transcribe(audioArray: audio, decodeOptions: options)
-        let duration = Double(audio.count) / Double(rate)
-        return results.flatMap(\.segments).flatMap { $0.words ?? [] }.compactMap { word in
-            let text = word.word.trimmingCharacters(in: .whitespacesAndNewlines)
-            let start = max(0, Double(word.start)), end = min(duration, Double(word.end))
-            guard !text.isEmpty, end > start else { return nil }
-            return SpokenWord(text: text, start: start, end: end, speaker: nil)
-        }
+        return try await recognizer.transcribe(audio, language: language, glossary: glossary)
     }
 
-    private func recognize(final: Bool, glossary: [String]) async throws -> [SpokenWord] {
-        guard let diarizer, !samples.isEmpty else { return [] }
-        let window = samples
-        let start = Double(totalSamples - window.count) / Double(rate)
-        let cutoff = Double(totalSamples) / Double(rate) - (final ? 0 : 0.5)
+    private func recognize(_ window: RecognitionAudioBuffer.Window, glossary: [String]) async throws -> [SpokenWord] {
+        guard let diarizer else { return [] }
+        let start = Double(window.startSample) / Double(rate)
+        let cutoff = Double(window.endSample) / Double(rate) - (window.isFinal ? 0 : 0.5)
         let segments = diarizer.timeline.speakers.values.flatMap { $0.finalizedSegments + $0.tentativeSegments }
         let speakerOffset = diarizerOffset
-        let decoded = try await transcribe(window, language: language, glossary: glossary)
+        let decoded = try await transcribe(window.samples, language: language, glossary: glossary)
         var words: [SpokenWord] = []
         for timing in decoded {
             let wordStart = start + timing.start
