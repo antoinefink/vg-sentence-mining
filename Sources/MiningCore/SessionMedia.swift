@@ -1,4 +1,5 @@
 import AVFoundation
+import AppKit
 import Foundation
 
 public struct Screenshot: Identifiable {
@@ -23,8 +24,42 @@ public struct Screenshot: Identifiable {
     public private(set) var sessionStart: Date?
     private var previewExpiresAt: Date?
 
+    static func captureDirectory(in temporaryDirectory: URL, bundleIdentifier: String) -> URL {
+        temporaryDirectory.appendingPathComponent("VG-Sentence-Mining-Captures", isDirectory: true)
+            .appendingPathComponent(bundleIdentifier, isDirectory: true)
+    }
+
+    static func removeLegacyCaptures(in temporaryDirectory: URL, bundleIdentifier: String, anotherMainAppIsRunning: Bool) throws {
+        guard bundleIdentifier == "io.antoine.vg-sentence-mining", !anotherMainAppIsRunning else { return }
+        let legacyRoot = temporaryDirectory.appendingPathComponent("VG-Sentence-Mining-Captures", isDirectory: true)
+        let entries: [URL]
+        do {
+            entries = try FileManager.default.contentsOfDirectory(at: legacyRoot, includingPropertiesForKeys: [.isDirectoryKey])
+        } catch let error as CocoaError where error.code == .fileReadNoSuchFile {
+            return
+        }
+        for entry in entries where UUID(uuidString: entry.lastPathComponent) != nil {
+            if try entry.resourceValues(forKeys: [.isDirectoryKey]).isDirectory == true {
+                try FileManager.default.removeItem(at: entry)
+            }
+        }
+    }
+
     public init(bufferDirectory: URL? = nil) throws {
-        let parent = bufferDirectory ?? FileManager.default.temporaryDirectory.appendingPathComponent("VG-Sentence-Mining-Captures", isDirectory: true)
+        let bundleIdentifier = Bundle.main.bundleIdentifier ?? "io.antoine.vg-sentence-mining"
+        if bufferDirectory == nil {
+            let anotherMainAppIsRunning = NSRunningApplication.runningApplications(withBundleIdentifier: bundleIdentifier)
+                .contains { $0.processIdentifier != ProcessInfo.processInfo.processIdentifier }
+            guard !anotherMainAppIsRunning else {
+                throw MiningError.message("Another copy of this app is running. Use its existing window before opening a second copy.")
+            }
+            try Self.removeLegacyCaptures(in: FileManager.default.temporaryDirectory, bundleIdentifier: bundleIdentifier,
+                                          anotherMainAppIsRunning: anotherMainAppIsRunning)
+        }
+        let parent = bufferDirectory ?? Self.captureDirectory(
+            in: FileManager.default.temporaryDirectory,
+            bundleIdentifier: bundleIdentifier
+        )
         try FileManager.default.createDirectory(at: parent, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
         for old in try FileManager.default.contentsOfDirectory(at: parent, includingPropertiesForKeys: nil) {
             try FileManager.default.removeItem(at: old)
