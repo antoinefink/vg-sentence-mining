@@ -78,4 +78,4 @@ MiniMax Speech 2.8 HD, ElevenLabs v3 and Inworld Realtime TTS 2 each generated p
 
 ## Icon
 
-The [rounded icon artwork](design/app-icon-rounded.png) was generated with the built-in imagegen tool. The [saved prompts](design/app-icon-prompt.md) describe the white speech-bubble/controller mark on blue. The Xcode asset catalog includes all required macOS icon sizes.
+The [full-bleed icon artwork](design/app-icon-fullbleed.png) was generated with the built-in imagegen tool. The [saved prompts](design/app-icon-minimal-prompt.md) describe the white dialogue bubble with a game-control mark on blue. `AppIcon.icon` supplies a fully opaque 1024 × 1024 layer in Apple's native icon format, so macOS applies the outer shape without adding an inset backing tile. The Xcode asset catalog retains the legacy macOS icon sizes.
