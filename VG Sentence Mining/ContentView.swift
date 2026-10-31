@@ -43,7 +43,7 @@ struct ContentView: View {
                 } else {
                     Picker("Language", selection: $model.language) {
                         ForEach(GameLanguage.allCases, id: \.self) { Text($0.name).tag($0) }
-                    }.labelsHidden().frame(width: 105)
+                    }.labelsHidden().fixedSize()
                 }
                 GameGlossaryPicker(model: model)
                 Spacer()
@@ -145,12 +145,19 @@ private struct CaptureSetupView: View {
         VStack(alignment: .leading, spacing: 20) {
             Text("Capture dialogue").font(.title2).fontWeight(.semibold)
             Text("Choose a language, then select your game in the macOS window picker.").foregroundStyle(.secondary)
-            Form {
-                Picker("Language", selection: $model.language) {
-                    ForEach(GameLanguage.allCases, id: \.self) { Text($0.name).tag($0) }
+            Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 12) {
+                GridRow {
+                    Text("Language").gridColumnAlignment(.trailing)
+                    Picker("Language", selection: $model.language) {
+                        ForEach(GameLanguage.allCases, id: \.self) { Text($0.name).tag($0) }
+                    }.labelsHidden().fixedSize()
                 }
-                LabeledContent("Game glossary") { GameGlossaryPicker(model: model) }
+                GridRow {
+                    Text("Game glossary")
+                    GameGlossaryPicker(model: model)
+                }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             if !model.rows.isEmpty { Text("A new capture replaces the current 30-minute buffer.").font(.caption).foregroundStyle(.secondary) }
             if model.loadingModels {
                 HStack { ProgressView().controlSize(.small); Text("Preparing speech recognition…").font(.callout).foregroundStyle(.secondary) }

@@ -21,7 +21,7 @@ struct GameGlossaryPicker: View {
         }
         .menuStyle(.borderlessButton)
         .fixedSize(horizontal: false, vertical: true)
-        .frame(maxWidth: 180)
+        .frame(maxWidth: 180, alignment: .leading)
         .accessibilityLabel("Game glossary")
         .accessibilityValue(model.glossaryPreferences.selected?.displayTitle ?? "No glossary")
         .help("Choose a glossary for new dialogue")
@@ -76,7 +76,7 @@ struct GameGlossarySettingsSection: View {
                     }
                 }
                 LabeledContent("Use for capture") { GameGlossaryPicker(model: model) }
-                Text("Shared by German and Spanish. Keep the list short; very long lists use only the last part. Changes apply to new dialogue.")
+                Text("Shared by German and Spanish. For faster transcription, use about 5–10 unusual names or places. Very long lists use only the last part. Changes apply to new dialogue.")
                     .font(.caption).foregroundStyle(.secondary)
             }
         }
