@@ -1,0 +1,114 @@
+import MiningCore
+import SwiftUI
+
+struct GameGlossaryPicker: View {
+    @ObservedObject var model: AppModel
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some View {
+        Menu {
+            Picker("Game glossary", selection: $model.glossaryPreferences.selectedID) {
+                Text("No glossary").tag(nil as UUID?)
+                ForEach(model.glossaryPreferences.presets) { preset in
+                    Text(preset.displayTitle).tag(Optional(preset.id))
+                }
+            }
+            Divider()
+            Button("Edit glossaries…") { openWindow(id: "settings") }
+        } label: {
+            Text(model.glossaryPreferences.selected?.displayTitle ?? "No glossary")
+                .lineLimit(1)
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize(horizontal: false, vertical: true)
+        .frame(maxWidth: 180)
+        .accessibilityLabel("Game glossary")
+        .accessibilityValue(model.glossaryPreferences.selected?.displayTitle ?? "No glossary")
+        .help("Choose a glossary for new dialogue")
+    }
+}
+
+struct GameGlossarySettingsSection: View {
+    @ObservedObject var model: AppModel
+    @State private var editingID: UUID?
+
+    var body: some View {
+        Section("Game glossaries") {
+            if model.glossaryPreferences.presets.isEmpty {
+                Text("Save a short glossary for each game to help recognize names, places and unusual terms.")
+                    .foregroundStyle(.secondary)
+                Button("Add glossary", systemImage: "plus", action: add)
+            } else {
+                HStack {
+                    Picker("Preset", selection: $editingID) {
+                        ForEach(model.glossaryPreferences.presets) { preset in
+                            Text(preset.displayTitle).tag(Optional(preset.id))
+                        }
+                    }
+                    Button(action: add) { Image(systemName: "plus") }
+                        .accessibilityLabel("Add glossary")
+                    Button(role: .destructive, action: remove) { Image(systemName: "trash") }
+                        .accessibilityLabel("Delete glossary").disabled(editingID == nil)
+                }
+                if let preset = model.glossaryPreferences.presets.first(where: { $0.id == editingID }) {
+                    TextField("Title", text: binding(preset.id, \.title), prompt: Text("Game name"))
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Glossary").font(.callout)
+                        TextEditor(text: binding(preset.id, \.text))
+                            .font(.body)
+                            .autocorrectionDisabled()
+                            .frame(minHeight: 140, idealHeight: 180, maxHeight: 240)
+                            .overlay(RoundedRectangle(cornerRadius: 5).stroke(.separator, lineWidth: 1))
+                            .accessibilityLabel("Glossary terms")
+                        Text("Paste words or phrases, one per line. Bullets, commas, semicolons and tabs also work.")
+                            .font(.caption).foregroundStyle(.secondary)
+                        HStack {
+                            Text("\(preset.terms.count) terms · Saved automatically")
+                                .font(.caption).foregroundStyle(.secondary)
+                            Spacer()
+                            if model.glossaryPreferences.selectedID == preset.id {
+                                Label("Current glossary", systemImage: "checkmark")
+                                    .font(.caption).foregroundStyle(.secondary)
+                            } else {
+                                Button("Use this glossary") { model.glossaryPreferences.selectedID = preset.id }
+                            }
+                        }
+                    }
+                }
+                LabeledContent("Use for capture") { GameGlossaryPicker(model: model) }
+                Text("Shared by German and Spanish. Keep the list short; very long lists use only the last part. Changes apply to new dialogue.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+        }
+        .onAppear { selectEditor() }
+        .onChange(of: model.glossaryPreferences.presets.map(\.id)) { selectEditor() }
+    }
+
+    private func binding(_ id: UUID, _ keyPath: WritableKeyPath<GameGlossary, String>) -> Binding<String> {
+        Binding {
+            model.glossaryPreferences.presets.first { $0.id == id }?[keyPath: keyPath] ?? ""
+        } set: { value in
+            guard let index = model.glossaryPreferences.presets.firstIndex(where: { $0.id == id }) else { return }
+            model.glossaryPreferences.presets[index][keyPath: keyPath] = value
+        }
+    }
+
+    private func selectEditor() {
+        if !model.glossaryPreferences.presets.contains(where: { $0.id == editingID }) {
+            editingID = model.glossaryPreferences.selected?.id ?? model.glossaryPreferences.presets.first?.id
+        }
+    }
+
+    private func add() {
+        let preset = GameGlossary()
+        model.glossaryPreferences.presets.append(preset)
+        editingID = preset.id
+        model.glossaryPreferences.selectedID = preset.id
+    }
+
+    private func remove() {
+        guard let editingID else { return }
+        model.glossaryPreferences.remove(id: editingID)
+        selectEditor()
+    }
+}

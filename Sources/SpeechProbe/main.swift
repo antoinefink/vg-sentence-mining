@@ -2,7 +2,6 @@ import AVFoundation
 import Foundation
 import MiningCore
 import MiningSpeech
-import FluidAudio
 
 @main struct SpeechProbe {
     private struct ObservedWord: Encodable {
@@ -44,6 +43,10 @@ import FluidAudio
         print("Models loaded in \(Date().timeIntervalSince(loadStart)) seconds from \(root.path)")
         guard CommandLine.arguments.count > 1, CommandLine.arguments[1] != "--prepare" else { return }
         let language = CommandLine.arguments.count > 2 ? GameLanguage(rawValue: CommandLine.arguments[2]) ?? .german : .german
+        let glossary: [String]
+        if let flag = CommandLine.arguments.firstIndex(of: "--glossary"), CommandLine.arguments.indices.contains(flag + 1) {
+            glossary = GameGlossary(text: try String(contentsOfFile: CommandLine.arguments[flag + 1], encoding: .utf8)).terms
+        } else { glossary = [] }
         await engine.start(language: language)
         let file = try AVAudioFile(forReading: URL(fileURLWithPath: CommandLine.arguments[1]))
         let source = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: AVAudioFrameCount(file.length))!
@@ -60,12 +63,9 @@ import FluidAudio
         if let conversionError { throw conversionError }
         let audio = Array(UnsafeBufferPointer(start: output.floatChannelData![0], count: Int(output.frameLength)))
         if CommandLine.arguments.contains("--batch") {
-            let models = try await AsrModels.downloadAndLoad(to: root.appendingPathComponent("Transcription"), version: .v3)
-            let recognizer = AsrManager()
-            try await recognizer.loadModels(models)
-            var state = TdtDecoderState.make(decoderLayers: await recognizer.decoderLayerCount)
-            let result = try await recognizer.transcribe(audio, decoderState: &state, language: language == .german ? .german : .spanish)
-            print("BATCH: \(result.text)")
+            let words = try await engine.transcribe(audio, language: language, glossary: glossary)
+            print("BATCH: \(words.map(\.text).joined(separator: " "))")
+            if CommandLine.arguments.contains("--words") { for word in words { print("\(word.start)-\(word.end) \(word.text)") } }
             return
         }
         let start = Date()
@@ -87,7 +87,7 @@ import FluidAudio
                 if wait > 0 { try await Task.sleep(for: .seconds(wait)) }
             }
             let inferenceStart = Date()
-            let words = try await engine.append(Array(audio[offset..<end]))
+            let words = try await engine.append(Array(audio[offset..<end]), glossary: glossary)
             let processingSeconds = Date().timeIntervalSince(inferenceStart)
             inferenceSeconds += processingSeconds
             let arrival = realtime ? Date().timeIntervalSince(start) : inputSeconds + processingSeconds
@@ -98,7 +98,7 @@ import FluidAudio
             assembler.append(words, sessionStart: start, language: language)
         }
         let finishStart = Date()
-        let finalWords = try await engine.finish()
+        let finalWords = try await engine.finish(glossary: glossary)
         let finishSeconds = Date().timeIntervalSince(finishStart)
         inferenceSeconds += finishSeconds
         let finalArrival = realtime ? Date().timeIntervalSince(start) : Double(audio.count) / 16000 + finishSeconds

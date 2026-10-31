@@ -31,27 +31,32 @@ struct ContentView: View {
 
     private var transcriptPane: some View {
         VStack(spacing: 0) {
-            if model.recording || !model.rows.isEmpty {
-                HStack(spacing: 8) {
-                    if model.recording {
-                        Circle().fill(.red).frame(width: 6, height: 6).accessibilityHidden(true)
-                        Text(model.sourceName).font(.callout)
-                        Text(model.language.name).font(.callout).foregroundStyle(.secondary)
-                    } else {
-                        Text("Recent dialogue").font(.headline)
-                    }
-                    Spacer()
-                    if model.recording {
-                        Button("Stop", action: model.stop).disabled(model.stopping)
-                    } else {
-                        Button("New capture…") { showingCaptureSetup = true }
-                    }
+            HStack(spacing: 8) {
+                if model.recording {
+                    Circle().fill(.red).frame(width: 6, height: 6).accessibilityHidden(true)
+                    Text(model.sourceName).font(.callout)
+                } else {
+                    Text(model.rows.isEmpty ? "Dialogue" : "Recent dialogue").font(.headline)
                 }
-                .buttonStyle(.bordered).controlSize(.small)
-                .padding(.horizontal, 20).padding(.vertical, 10)
-                .background(.bar)
-                Divider()
+                if model.recording || !model.rows.isEmpty {
+                    Text(model.language.name).font(.callout).foregroundStyle(.secondary)
+                } else {
+                    Picker("Language", selection: $model.language) {
+                        ForEach(GameLanguage.allCases, id: \.self) { Text($0.name).tag($0) }
+                    }.labelsHidden().frame(width: 105)
+                }
+                GameGlossaryPicker(model: model)
+                Spacer()
+                if model.recording {
+                    Button("Stop", action: model.stop).disabled(model.stopping)
+                } else if !model.rows.isEmpty {
+                    Button("New capture…") { showingCaptureSetup = true }
+                }
             }
+            .buttonStyle(.bordered).controlSize(.small)
+            .padding(.horizontal, 20).padding(.vertical, 10)
+            .background(.bar)
+            Divider()
             Group {
                 if model.rows.isEmpty { welcome }
                 else { transcript }
@@ -144,6 +149,7 @@ private struct CaptureSetupView: View {
                 Picker("Language", selection: $model.language) {
                     ForEach(GameLanguage.allCases, id: \.self) { Text($0.name).tag($0) }
                 }
+                LabeledContent("Game glossary") { GameGlossaryPicker(model: model) }
             }
             if !model.rows.isEmpty { Text("A new capture replaces the current 30-minute buffer.").font(.caption).foregroundStyle(.secondary) }
             if model.loadingModels {
@@ -266,6 +272,7 @@ struct SettingsView: View {
     @State private var showingKeySetup = false
     var body: some View {
         Form {
+            GameGlossarySettingsSection(model: model)
             Section("Language assistance") {
                 TextField("Codex CLI", text: $model.codexPath)
                 Text("Codex uses your existing login. Selected text is sent to its OpenAI service; game audio stays local.").font(.caption).foregroundStyle(.secondary)

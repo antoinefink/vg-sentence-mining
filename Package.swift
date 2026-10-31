@@ -12,11 +12,13 @@ let package = Package(
     dependencies: [
         .package(url: "https://github.com/FluidInference/FluidAudio.git",
                  revision: "1b0ed50d686873128a4129b3510ce3914c849bab", traits: ["Diarizer"]),
+        .package(url: "https://github.com/argmaxinc/argmax-oss-swift.git", exact: "1.1.1"),
     ],
     targets: [
         .target(name: "MiningCore"),
-        .target(name: "MiningSpeech", dependencies: ["MiningCore", .product(name: "FluidAudio", package: "FluidAudio")]),
-        .executableTarget(name: "SpeechProbe", dependencies: ["MiningSpeech", "MiningCore", .product(name: "FluidAudio", package: "FluidAudio")]),
+        .target(name: "MiningSpeech", dependencies: ["MiningCore", .product(name: "FluidAudio", package: "FluidAudio"), .product(name: "WhisperKit", package: "argmax-oss-swift")]),
+        .executableTarget(name: "SpeechProbe", dependencies: ["MiningSpeech", "MiningCore"]),
         .testTarget(name: "MiningCoreTests", dependencies: ["MiningCore"]),
+        .testTarget(name: "MiningSpeechTests", dependencies: ["MiningSpeech", "MiningCore"], resources: [.copy("Fixtures")]),
     ]
 )

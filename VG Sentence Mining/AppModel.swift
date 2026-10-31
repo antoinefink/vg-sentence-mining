@@ -7,6 +7,18 @@ import ScreenCaptureKit
 
 @MainActor final class AppModel: ObservableObject {
     @Published var language: GameLanguage = .german
+    @Published var glossaryPreferences: GameGlossaryPreferences = {
+        guard let data = UserDefaults.standard.data(forKey: "gameGlossaries"),
+              let preferences = try? JSONDecoder().decode(GameGlossaryPreferences.self, from: data) else { return .init() }
+        return preferences
+    }() {
+        didSet {
+            activeGlossaryTerms = glossaryPreferences.selected?.terms ?? []
+            if let data = try? JSONEncoder().encode(glossaryPreferences) {
+                UserDefaults.standard.set(data, forKey: "gameGlossaries")
+            }
+        }
+    }
     @Published private(set) var choosingWindow = false
     @Published private(set) var sourceName = "Game"
     @Published private(set) var rows: [Dialogue] = []
@@ -62,6 +74,7 @@ import ScreenCaptureKit
     @Published private(set) var settingsStatus: String?
     @Published var codexPath = UserDefaults.standard.string(forKey: "codexPath") ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".bun/bin/codex").path
     private let speech = LocalSpeechEngine()
+    private var activeGlossaryTerms: [String] = []
     private let translator = CodexTranslator()
     private let pronunciation = ReplicatePronunciation()
     private let tokenStore = ReplicateTokenStore()
@@ -86,6 +99,7 @@ import ScreenCaptureKit
     private var ankiFieldRequests: [GameLanguage: UUID] = [:]
 
     init() {
+        activeGlossaryTerms = glossaryPreferences.selected?.terms ?? []
         do { media = try SessionMedia() } catch { self.error = error.localizedDescription }
         do { hasReplicateToken = try tokenStore.load() != nil } catch { self.error = error.localizedDescription }
         timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect().sink { [weak self] date in self?.expire(at: date) }
@@ -163,13 +177,13 @@ import ScreenCaptureKit
                             if gap > 0.06 {
                                 let silence = Array(repeating: Float(0), count: Int(gap * 16000))
                                 try media.appendAudio(silence, date: packet.date)
-                                append(try await speech.append(silence), sessionStart: start)
+                                append(try await speech.append(silence, glossary: activeGlossaryTerms), sessionStart: start)
                                 audioSamples += silence.count
                             }
                         }
                         try media.appendAudio(packet.samples, date: packet.date)
                         audioSamples += packet.samples.count
-                        let words = try await speech.append(packet.samples)
+                        let words = try await speech.append(packet.samples, glossary: activeGlossaryTerms)
                         append(words, sessionStart: media.sessionStart ?? packet.date)
                         if let last = words.last {
                             let delay = max(0, Date().timeIntervalSince(media.sessionStart ?? packet.date) - last.end)
@@ -177,7 +191,7 @@ import ScreenCaptureKit
                         }
                     }
                 }
-                append(try await speech.finish(), sessionStart: media.sessionStart ?? Date())
+                append(try await speech.finish(glossary: activeGlossaryTerms), sessionStart: media.sessionStart ?? Date())
                 try media.flush()
                 status = "Capture stopped. Recent dialogue expires after 30 minutes."
             } catch {
