@@ -24,14 +24,21 @@ public struct Dialogue: Identifiable, Equatable, Sendable {
     public var text: String { words.map(\.text).joined(separator: " ") }
     public var start: TimeInterval { words.first?.start ?? 0 }
     public var end: TimeInterval { words.map(\.end).max() ?? start }
-    public var speaker: Int? { words.first?.speaker }
+    public var speaker: Int? {
+        var counts: [Int: Int] = [:]
+        for word in words {
+            if let speaker = word.speaker { counts[speaker, default: 0] += 1 }
+        }
+        guard let highest = counts.values.max() else { return nil }
+        return words.compactMap(\.speaker).first { counts[$0] == highest }
+    }
     public var expiresAt: Date { capturedAt.addingTimeInterval(1800) }
     public init(id: UUID = UUID(), words: [SpokenWord], capturedAt: Date, language: GameLanguage) {
         self.id = id; self.words = words; self.capturedAt = capturedAt; self.language = language
     }
 }
 
-/// Joins timestamped words across recognition windows without joining separate speakers.
+/// Joins timestamped words across recognition windows into sentences, tolerating speaker-label changes.
 public struct TranscriptAssembler: Sendable {
     public private(set) var rows: [Dialogue] = []
     public init() {}
@@ -50,15 +57,20 @@ public struct TranscriptAssembler: Sendable {
             }
             if repeatedWindowWord { continue }
             if let last = rows.last,
-               last.speaker == word.speaker,
-               word.start - last.end < 1.0,
+               word.start - last.end < 1.5,
                last.end - last.start < 16,
-               ![".", "?", "!", "…"].contains(where: last.text.hasSuffix) {
+               !endsSentence(last.text) {
                 rows[rows.count - 1].words.append(word)
             } else {
                 rows.append(Dialogue(words: [word], capturedAt: sessionStart.addingTimeInterval(word.start), language: language))
             }
         }
+    }
+
+    private func endsSentence(_ text: String) -> Bool {
+        let closingMarks = CharacterSet(charactersIn: "\"'“”‘’«»‹›„)]}")
+        let ending = text.trimmingCharacters(in: closingMarks.union(.whitespacesAndNewlines))
+        return [".", "?", "!", "…"].contains(where: ending.hasSuffix)
     }
 
     public mutating func expire(now: Date) {
