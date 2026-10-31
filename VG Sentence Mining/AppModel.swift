@@ -91,6 +91,7 @@ import ScreenCaptureKit
     private var player: AVAudioPlayer?
     private var timer: AnyCancellable?
     private var audioSamples = 0
+    private var recognitionRunning = false
     private var sentWords: [UUID: Set<String>] = [:]
     private var ankiPreferences: AnkiPreferences = {
         guard let data = UserDefaults.standard.data(forKey: "ankiExportConfigurations"), let settings = try? JSONDecoder().decode(AnkiPreferences.self, from: data) else { return AnkiPreferences() }
@@ -160,13 +161,35 @@ import ScreenCaptureKit
         error = nil
         Task {
             defer { starting = false }
+            var recognitionTask: Task<Void, Never>?
+            var recognitionError: Error?
             do {
                 try media.reset()
                 assembler = TranscriptAssembler(); rows.removeAll(); sentWords.removeAll(); audioSamples = 0
                 await speech.start(language: language)
                 let events = try await capture.start(filter: filter)
                 recording = true
+                recognitionRunning = true
                 status = "Recording \(sourceName). Waiting for speech…"
+                recognitionTask = Task {
+                    do {
+                        while recognitionRunning && !Task.isCancelled {
+                            let words = try await speech.recognizePending(glossary: activeGlossaryTerms)
+                            if let start = media.sessionStart {
+                                append(words, sessionStart: start)
+                                if let last = words.last {
+                                    let delay = max(0, Date().timeIntervalSince(start) - last.end)
+                                    status = "Recording · last dialogue arrived \(String(format: "%.1f", delay)) s after the audio"
+                                }
+                            }
+                            try await Task.sleep(for: .milliseconds(100))
+                        }
+                    } catch {
+                        guard !Task.isCancelled else { return }
+                        recognitionError = error
+                        try? await capture.stop()
+                    }
+                }
                 for try await event in events {
                     switch event {
                     case .screenshot(let data, let date): try media.addScreenshot(data, date: date)
@@ -177,24 +200,25 @@ import ScreenCaptureKit
                             if gap > 0.06 {
                                 let silence = Array(repeating: Float(0), count: Int(gap * 16000))
                                 try media.appendAudio(silence, date: packet.date)
-                                append(try await speech.append(silence, glossary: activeGlossaryTerms), sessionStart: start)
+                                try await speech.ingest(silence)
                                 audioSamples += silence.count
                             }
                         }
                         try media.appendAudio(packet.samples, date: packet.date)
                         audioSamples += packet.samples.count
-                        let words = try await speech.append(packet.samples, glossary: activeGlossaryTerms)
-                        append(words, sessionStart: media.sessionStart ?? packet.date)
-                        if let last = words.last {
-                            let delay = max(0, Date().timeIntervalSince(media.sessionStart ?? packet.date) - last.end)
-                            status = "Recording · last dialogue arrived \(String(format: "%.1f", delay)) s after the audio"
-                        }
+                        try await speech.ingest(packet.samples)
                     }
                 }
+                recognitionRunning = false
+                await recognitionTask?.value
+                if let recognitionError { throw recognitionError }
                 append(try await speech.finish(glossary: activeGlossaryTerms), sessionStart: media.sessionStart ?? Date())
                 try media.flush()
                 status = "Capture stopped. Recent dialogue expires after 30 minutes."
             } catch {
+                recognitionRunning = false
+                recognitionTask?.cancel()
+                await recognitionTask?.value
                 self.error = error.localizedDescription
                 status = "Capture stopped."
                 try? await capture.stop()

@@ -38,9 +38,14 @@ editing or deleting a glossary affects new recognition windows; existing
 dialogue stays as captured. Deleting the current preset selects **No glossary**.
 
 Glossary terms stay local and are passed to Whisper as prompt tokens. They guide
-recognition, but some names may still need correction. Keep lists small: Whisper
-uses up to 223 prompt tokens from the end of a long list. A timing adapter corrects
+recognition, but some names may still need correction. Use about 5–10 unusual
+names or places for faster transcription. WhisperKit uses up to 111 prompt tokens
+from the end of a long list. A timing adapter corrects
 WhisperKit 1.1.1's alignment offset when a glossary prompt is present.
+
+Capture continues while recognition runs. A single recognition worker processes
+the latest eight-second audio window, rather than queuing every recognition
+window behind a slow result.
 
 The speech probe accepts the same pasted-list format:
 

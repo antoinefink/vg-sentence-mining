@@ -3,7 +3,8 @@ import Foundation
 import MiningCore
 import MiningSpeech
 
-@main struct SpeechProbe {
+@main @MainActor struct SpeechProbe {
+    private static var recognitionRunning = false
     private struct ObservedWord: Encodable {
         let text: String
         let start: Double
@@ -30,6 +31,7 @@ import MiningSpeech
         let medianLatencySeconds: Double
         let p95LatencySeconds: Double
         let maxLatencySeconds: Double
+        let maxIngestionDelaySeconds: Double
         let speakers: [Int]
         let words: [ObservedWord]
         let sentences: [Sentence]
@@ -78,7 +80,28 @@ import MiningSpeech
         let packetSamples = 16 * packetMilliseconds
         var observed: [ObservedWord] = []
         var inferenceSeconds: Double = 0
+        var maxIngestionDelay: Double = 0
         var assembler = TranscriptAssembler()
+        func observe(_ words: [SpokenWord], arrival: Double) {
+            observed.append(contentsOf: words.map {
+                ObservedWord(text: $0.text, start: $0.start, end: $0.end, speaker: $0.speaker, arrival: arrival, latency: max(0, arrival - $0.end))
+            })
+            assembler.append(words, sessionStart: start, language: language)
+        }
+        recognitionRunning = true
+        let recognitionTask: Task<Void, Error>? = realtime ? Task {
+            do {
+                while recognitionRunning && !Task.isCancelled {
+                    let inferenceStart = Date()
+                    let words = try await engine.recognizePending(glossary: glossary)
+                    inferenceSeconds += Date().timeIntervalSince(inferenceStart)
+                    observe(words, arrival: Date().timeIntervalSince(start))
+                    try await Task.sleep(for: .milliseconds(100))
+                }
+            } catch {
+                if !Task.isCancelled { throw error }
+            }
+        } : nil
         for offset in stride(from: 0, to: audio.count, by: packetSamples) {
             let end = min(offset + packetSamples, audio.count)
             let inputSeconds = Double(end) / 16000
@@ -86,26 +109,27 @@ import MiningSpeech
                 let wait = inputSeconds - Date().timeIntervalSince(start)
                 if wait > 0 { try await Task.sleep(for: .seconds(wait)) }
             }
+            if realtime {
+                try await engine.ingest(Array(audio[offset..<end]))
+                maxIngestionDelay = max(maxIngestionDelay, Date().timeIntervalSince(start) - inputSeconds)
+                continue
+            }
             let inferenceStart = Date()
-            let words = try await engine.append(Array(audio[offset..<end]), glossary: glossary)
+            try await engine.ingest(Array(audio[offset..<end]))
+            let words = try await engine.recognizePending(glossary: glossary)
             let processingSeconds = Date().timeIntervalSince(inferenceStart)
             inferenceSeconds += processingSeconds
-            let arrival = realtime ? Date().timeIntervalSince(start) : inputSeconds + processingSeconds
-            observed.append(contentsOf: words.map {
-                ObservedWord(text: $0.text, start: $0.start, end: $0.end, speaker: $0.speaker, arrival: arrival, latency: max(0, arrival - $0.end))
-            })
+            observe(words, arrival: inputSeconds + processingSeconds)
             if CommandLine.arguments.contains("--words") { for word in words { print("WINDOW \(offset / 16000): \(word.start)-\(word.end) \(word.text)") } }
-            assembler.append(words, sessionStart: start, language: language)
         }
+        recognitionRunning = false
+        try await recognitionTask?.value
         let finishStart = Date()
         let finalWords = try await engine.finish(glossary: glossary)
         let finishSeconds = Date().timeIntervalSince(finishStart)
         inferenceSeconds += finishSeconds
         let finalArrival = realtime ? Date().timeIntervalSince(start) : Double(audio.count) / 16000 + finishSeconds
-        observed.append(contentsOf: finalWords.map {
-            ObservedWord(text: $0.text, start: $0.start, end: $0.end, speaker: $0.speaker, arrival: finalArrival, latency: max(0, finalArrival - $0.end))
-        })
-        assembler.append(finalWords, sessionStart: start, language: language)
+        observe(finalWords, arrival: finalArrival)
         for row in assembler.rows { print("[\(String(format: "%.2f", row.start))] Speaker \(row.speaker.map { String($0 + 1) } ?? "?"): \(row.text)") }
         print("Processed \(Double(audio.count) / 16000)s audio in \(Date().timeIntervalSince(start))s")
         if let flag = CommandLine.arguments.firstIndex(of: "--report"), CommandLine.arguments.indices.contains(flag + 1) {
@@ -117,6 +141,7 @@ import MiningSpeech
                 source: CommandLine.arguments[1], language: language.rawValue, realtime: realtime, packetMilliseconds: packetMilliseconds,
                 audioSeconds: Double(audio.count) / 16000, elapsedSeconds: Date().timeIntervalSince(start), inferenceSeconds: inferenceSeconds,
                 medianLatencySeconds: percentile(0.5), p95LatencySeconds: percentile(0.95), maxLatencySeconds: latencies.last ?? 0,
+                maxIngestionDelaySeconds: maxIngestionDelay,
                 speakers: Array(Set(observed.compactMap(\.speaker))).sorted(), words: observed,
                 sentences: assembler.rows.map { .init(text: $0.text, start: $0.start, end: $0.end, speaker: $0.speaker) }
             )

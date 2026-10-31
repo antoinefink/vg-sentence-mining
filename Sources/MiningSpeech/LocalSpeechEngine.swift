@@ -51,7 +51,7 @@ public actor LocalSpeechEngine {
         diarizer?.reset()
     }
 
-    public func append(_ audio: [Float], glossary: [String] = []) async throws -> [SpokenWord] {
+    public func ingest(_ audio: [Float]) throws {
         guard let diarizer, recognizer != nil else { throw MiningError.message("Load the local models first.") }
         samples.append(contentsOf: audio)
         totalSamples += audio.count
@@ -63,6 +63,9 @@ public actor LocalSpeechEngine {
         try diarizer.addAudio(audio, sourceSampleRate: Double(rate))
         _ = try diarizer.process()
         if samples.count > rate * 8 { samples.removeFirst(samples.count - rate * 8) }
+    }
+
+    public func recognizePending(glossary: [String] = []) async throws -> [SpokenWord] {
         guard samples.count >= rate * 4, sinceRecognition >= rate * 2 else { return [] }
         sinceRecognition = 0
         return try await recognize(final: false, glossary: glossary)
@@ -106,17 +109,18 @@ public actor LocalSpeechEngine {
         let window = samples
         let start = Double(totalSamples - window.count) / Double(rate)
         let cutoff = Double(totalSamples) / Double(rate) - (final ? 0 : 0.5)
-        let decoded = try await transcribe(window, language: language, glossary: glossary)
         let segments = diarizer.timeline.speakers.values.flatMap { $0.finalizedSegments + $0.tentativeSegments }
+        let speakerOffset = diarizerOffset
+        let decoded = try await transcribe(window, language: language, glossary: glossary)
         var words: [SpokenWord] = []
         for timing in decoded {
             let wordStart = start + timing.start
             let wordEnd = start + timing.end
             let overlapping = segments.map { segment in
-                (segment.speakerIndex, max(0, min(wordEnd, diarizerOffset + Double(segment.endTime)) - max(wordStart, diarizerOffset + Double(segment.startTime))))
+                (segment.speakerIndex, max(0, min(wordEnd, speakerOffset + Double(segment.endTime)) - max(wordStart, speakerOffset + Double(segment.startTime))))
             }.filter { $0.1 > 0 }.max { $0.1 < $1.1 }
             let nearest = segments.map { segment in
-                (segment.speakerIndex, max(0, max(diarizerOffset + Double(segment.startTime) - wordEnd, wordStart - diarizerOffset - Double(segment.endTime))))
+                (segment.speakerIndex, max(0, max(speakerOffset + Double(segment.startTime) - wordEnd, wordStart - speakerOffset - Double(segment.endTime))))
             }.filter { $0.1 <= 0.6 }.min { $0.1 < $1.1 }
             words.append(SpokenWord(text: timing.text, start: wordStart, end: wordEnd, speaker: overlapping?.0 ?? nearest?.0))
         }
