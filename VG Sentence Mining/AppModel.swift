@@ -3,6 +3,7 @@ import AVFoundation
 import Combine
 import MiningCore
 import MiningSpeech
+import OSLog
 import ScreenCaptureKit
 
 @MainActor final class AppModel: ObservableObject {
@@ -30,6 +31,7 @@ import ScreenCaptureKit
     @Published private(set) var starting = false
     @Published private(set) var stopping = false
     @Published var status = "Load the local speech models to begin."
+    @Published private(set) var captureRecoveryNotice: String?
     @Published var error: String?
     @Published var selected: Dialogue?
     @Published var selectedWord = ""
@@ -92,7 +94,8 @@ import ScreenCaptureKit
     private var voiceTestID = UUID()
     private var player: AVAudioPlayer?
     private var timer: AnyCancellable?
-    private var audioSamples = 0
+    private var audioTimeline = CaptureAudioTimeline()
+    private let captureLogger = Logger(subsystem: "io.antoine.vg-sentence-mining", category: "Capture")
     private var recognitionRunning = false
     private var sentWords: [UUID: Set<String>] = [:]
     private var ankiPreferences: AnkiPreferences = {
@@ -175,7 +178,8 @@ import ScreenCaptureKit
             var recognitionError: Error?
             do {
                 try media.reset()
-                assembler = TranscriptAssembler(); rows.removeAll(); sentWords.removeAll(); audioSamples = 0
+                assembler = TranscriptAssembler(); rows.removeAll(); sentWords.removeAll()
+                audioTimeline = CaptureAudioTimeline(); captureRecoveryNotice = nil
                 await speech.start(language: language)
                 let events = try await capture.start(filter: filter)
                 recording = true
@@ -204,19 +208,30 @@ import ScreenCaptureKit
                     switch event {
                     case .screenshot(let data, let date): try media.addScreenshot(data, date: date)
                     case .audio(let packet):
-                        if let start = media.sessionStart {
-                            let gap = packet.date.timeIntervalSince(start) - Double(audioSamples) / 16000
-                            if gap > 2 { throw MiningError.message("The audio capture was interrupted. Start a new capture to keep audio and screenshots aligned.") }
-                            if gap > 0.06 {
-                                let silence = Array(repeating: Float(0), count: Int(gap * 16000))
-                                try media.appendAudio(silence, date: packet.date)
-                                try await speech.ingest(silence)
-                                audioSamples += silence.count
-                            }
+                        let adjustment: CaptureAudioTimeline.Adjustment
+                        do {
+                            adjustment = try audioTimeline.align(sampleCount: packet.samples.count, at: packet.date)
+                        } catch {
+                            captureLogger.error("Audio timeline rejected packet: timestamp=\(packet.date.timeIntervalSince1970, privacy: .public), session_start=\(media.sessionStart?.timeIntervalSince1970 ?? 0, privacy: .public), expected_sample=\(self.audioTimeline.sampleCount, privacy: .public), packet_samples=\(packet.samples.count, privacy: .public). \(error.localizedDescription, privacy: .public)")
+                            throw error
                         }
-                        try media.appendAudio(packet.samples, date: packet.date)
-                        audioSamples += packet.samples.count
-                        try await speech.ingest(packet.samples)
+                        if adjustment.silenceSamples > 0 || adjustment.trimmedSamples > 0 {
+                            captureLogger.notice("Audio timing recovered: offset_seconds=\(adjustment.offset, privacy: .public), expected_sample=\(adjustment.expectedSample, privacy: .public), timestamp=\(packet.date.timeIntervalSince1970, privacy: .public), silence_samples=\(adjustment.silenceSamples, privacy: .public), trimmed_samples=\(adjustment.trimmedSamples, privacy: .public), packet_samples=\(packet.samples.count, privacy: .public), output_rate=16000")
+                        }
+                        if adjustment.silenceSamples >= 4000, let start = media.sessionStart {
+                            let gapStart = start.addingTimeInterval(Double(adjustment.expectedSample) / 16000)
+                            captureRecoveryNotice = "Audio gap at \(gapStart.formatted(date: .omitted, time: .standard)) (\(String(format: "%.1f", Double(adjustment.silenceSamples) / 16000)) s missing). Capture continued."
+                        }
+                        for offset in stride(from: 0, to: adjustment.silenceSamples, by: 16000) {
+                            let silence = Array(repeating: Float(0), count: min(16000, adjustment.silenceSamples - offset))
+                            try media.appendAudio(silence, date: packet.date)
+                            try await speech.ingest(silence)
+                        }
+                        let samples = Array(packet.samples.dropFirst(adjustment.trimmedSamples))
+                        if !samples.isEmpty {
+                            try media.appendAudio(samples, date: packet.date)
+                            try await speech.ingest(samples)
+                        }
                     }
                 }
                 recognitionRunning = false

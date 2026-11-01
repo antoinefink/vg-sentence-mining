@@ -62,9 +62,17 @@ struct ContentView: View {
                 else { transcript }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            if !model.rows.isEmpty {
+            if !model.rows.isEmpty || model.captureRecoveryNotice != nil {
                 Divider()
-                HStack { Text(model.status).lineLimit(1); Spacer() }
+                HStack {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(model.status).lineLimit(1)
+                        if let notice = model.captureRecoveryNotice {
+                            Text(notice).foregroundStyle(.primary)
+                        }
+                    }
+                    Spacer()
+                }
                     .font(.caption).foregroundStyle(.secondary).padding(.horizontal, 20).padding(.vertical, 9).background(.bar)
             }
         }

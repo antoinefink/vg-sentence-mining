@@ -1,6 +1,7 @@
 import AVFoundation
 import CoreImage
 import MiningCore
+import OSLog
 import ScreenCaptureKit
 
 struct AudioPacket: Sendable {
@@ -18,6 +19,7 @@ final class CaptureService: NSObject, SCStreamOutput, SCStreamDelegate, @uncheck
     private var continuation: AsyncThrowingStream<CaptureEvent, Error>.Continuation?
     private let queue = DispatchQueue(label: "io.antoine.vg.capture")
     private let context = CIContext()
+    private let logger = Logger(subsystem: "io.antoine.vg-sentence-mining", category: "Capture")
     private var converter: AVAudioConverter?
     private var lastScreenshot = -Double.infinity
     private var lastImage: Data?
@@ -56,6 +58,8 @@ final class CaptureService: NSObject, SCStreamOutput, SCStreamDelegate, @uncheck
     }
 
     func stream(_ stream: SCStream, didStopWithError error: Error) {
+        let error = error as NSError
+        logger.error("ScreenCaptureKit stopped: domain=\(error.domain, privacy: .public), code=\(error.code, privacy: .public)")
         continuation?.finish(throwing: error)
     }
 
@@ -101,7 +105,10 @@ final class CaptureService: NSObject, SCStreamOutput, SCStreamDelegate, @uncheck
         guard let description = buffer.formatDescription else { return [] }
         let format = AVAudioFormat(cmAudioFormatDescription: description)
         let target = AVAudioFormat(standardFormatWithSampleRate: 16000, channels: 1)!
-        if converter?.inputFormat != format { converter = AVAudioConverter(from: format, to: target) }
+        if converter?.inputFormat != format {
+            logger.notice("Capture audio format: input_rate=\(format.sampleRate, privacy: .public), channels=\(format.channelCount, privacy: .public), input_frames=\(buffer.numSamples, privacy: .public), presentation_time=\(buffer.presentationTimeStamp.seconds, privacy: .public), output_rate=16000")
+            converter = AVAudioConverter(from: format, to: target)
+        }
         guard let converter else { throw MiningError.message("Cannot convert the game's audio format.") }
         return try buffer.withAudioBufferList { list, _ in
             guard let input = AVAudioPCMBuffer(pcmFormat: format, bufferListNoCopy: list.unsafePointer),

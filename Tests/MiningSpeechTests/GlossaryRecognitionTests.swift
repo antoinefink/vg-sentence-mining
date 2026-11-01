@@ -65,3 +65,56 @@ func selectableModelsRecognizeGermanAndSpanishWithValidWordTimings() async throw
     }
     await engine.unload()
 }
+
+@Test(.enabled(if: ProcessInfo.processInfo.environment["VG_CAPTURE_RECOVERY_INTEGRATION"] == "1"))
+@MainActor func captureContinuesAcrossAGapWithAlignedSpeechAndScreenshots() async throws {
+    let engine = LocalSpeechEngine()
+    try await engine.prepare(modelDirectory: URL(fileURLWithPath: "/Volumes/T9/VG Sentence Mining/Models"), model: .whisperLargeV3)
+    await engine.start(language: .german)
+    let url = try #require(Bundle.module.url(forResource: "german", withExtension: "wav", subdirectory: "Fixtures"))
+    let file = try AVAudioFile(forReading: url)
+    let input = try #require(AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: AVAudioFrameCount(file.length)))
+    try file.read(into: input)
+    let channel = try #require(input.floatChannelData?[0])
+    let audio = Array(UnsafeBufferPointer(start: channel, count: Int(input.frameLength)))
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent("vg-gap-speech-test-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let media = try SessionMedia(bufferDirectory: directory)
+    let start = Date()
+    var timeline = CaptureAudioTimeline()
+    var words: [SpokenWord] = []
+    let terms = ["Geralt", "Geralt von Riva", "Yennefer", "Kaer Morhen", "Ciri", "Vesemir"]
+    let split = 51200
+    let gap = 2.25
+    let resumed = start.addingTimeInterval(Double(split) / 16000 + gap)
+    try media.addScreenshot(Data([1]), date: start)
+    try media.addScreenshot(Data([2]), date: resumed)
+    for range in [0..<split, split..<audio.count] {
+        for offset in stride(from: range.lowerBound, to: range.upperBound, by: 8000) {
+            let end = min(offset + 8000, range.upperBound)
+            let date = start.addingTimeInterval(Double(offset) / 16000 + (offset >= split ? gap : 0))
+            let adjustment = try timeline.align(sampleCount: end - offset, at: date)
+            for silenceOffset in stride(from: 0, to: adjustment.silenceSamples, by: 16000) {
+                let silence = Array(repeating: Float(0), count: min(16000, adjustment.silenceSamples - silenceOffset))
+                try media.appendAudio(silence, date: date)
+                try await engine.ingest(silence)
+            }
+            let packet = Array(audio[offset..<end].dropFirst(adjustment.trimmedSamples))
+            try media.appendAudio(packet, date: date)
+            try await engine.ingest(packet)
+            words += try await engine.recognizePending(glossary: terms)
+        }
+    }
+    words += try await engine.finish(glossary: terms)
+    await engine.unload()
+    let ciri = try #require(words.first { $0.text.trimmingCharacters(in: .punctuationCharacters) == "Ciri" })
+    let vesemir = try #require(words.first { $0.text.trimmingCharacters(in: .punctuationCharacters) == "Vesemir" })
+    #expect(ciri.start > 5.2 && ciri.start < 6.2)
+    #expect(vesemir.start > 6.2)
+    #expect(vesemir.end <= Double(audio.count) / 16000 + gap)
+    #expect(timeline.sampleCount == audio.count + 36000)
+    #expect(media.nearbyScreenshots(at: start.addingTimeInterval(ciri.start)).map(\.date) == [resumed])
+    let clip = try media.audioClip(start: ciri.start, end: vesemir.end, now: start.addingTimeInterval(9))
+    #expect(try AVAudioFile(forReading: clip).length > 16000)
+    print("Recovered \(gap)s gap; Ciri at \(ciri.start)s, Vesemir at \(vesemir.start)s; \(words.count) recognized words and matching resumed screenshot.")
+}

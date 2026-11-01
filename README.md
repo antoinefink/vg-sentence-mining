@@ -47,6 +47,14 @@ characters from the start of the list.
 Capture continues while recognition runs. Overlapping eight-second windows
 retain unprocessed audio until decoding completes. A bounded 32-second buffer
 reports sustained overload instead of silently skipping unprocessed audio.
+
+Brief capture timestamp gaps up to ten seconds are filled with silence so later
+speech and screenshots stay aligned. Overlapping audio is trimmed to avoid
+recording it twice. Gaps of at least a quarter-second appear in the capture footer;
+existing dialogue stays available. Larger clock jumps stop the capture. Missing
+speech cannot be reconstructed. The app logs exact timing corrections and input
+format changes in the `Capture` category of macOS Console.
+
 Qwen's aligned words retain transcript punctuation; malformed timestamps are
 repaired approximately within the audio window.
 
@@ -109,9 +117,17 @@ Use `es` for Spanish. Models must be on the connected T9 drive.
 
 ## Verified behavior
 
-The regression suite covers contiguous recognition under backlog, final audio tails, bounded overload, overlapping recognition windows, real repeated words, short words with overlapping timings, speaker boundaries, HTML escaping, original audio extraction and physical media expiry.
+The regression suite covers recovery beyond two seconds, consecutive gaps, overlapping packets, the ten-second recovery bound, original clips and screenshots after a gap, contiguous recognition under backlog, final audio tails, bounded overload, overlapping recognition windows, real repeated words, short words with overlapping timings, speaker boundaries, HTML escaping, original audio extraction and physical media expiry.
 
 Core tests cover glossary paste formats, Unicode, persistence, selection and deletion, separate temporary-media directories for app bundles, safe cleanup of pre-upgrade captures, Replicate requests, trusted output URLs, provider error redaction, Basic and Migaku export payloads, read-only Anki discovery, profile isolation, saved mappings and a disposable Keychain round trip. The optional speech integration test switches through all three models using synthetic German and Spanish fixtures. It verifies word timings, all five glossary names for the two supporting models, cleared hints, and digital silence. Run it with `VG_SPEECH_INTEGRATION=1 xcrun swift test -c release`; it requires T9 and the downloaded local models.
+
+The optional capture-recovery integration check replays a 2.25-second missing
+interval through Whisper, then verifies later German word timestamps, original
+audio clips and screenshot selection:
+
+```sh
+VG_CAPTURE_RECOVERY_INTEGRATION=1 xcrun swift test -c release --filter captureContinuesAcrossAGapWithAlignedSpeechAndScreenshots
+```
 
 A native check with a delayed CLI also verifies that changing the original sentence rejects its old explanation and that an in-flight response preserves manually edited English. Capture exits discard recognition buffers; partial audio participates in expiry. Idle capture frames reuse the last valid image, while blank or suspended frames invalidate it.
 

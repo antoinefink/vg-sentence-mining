@@ -39,6 +39,45 @@ import Testing
     #expect(files.filter { $0.pathExtension == "pcm" }.isEmpty)
 }
 
+@Test @MainActor func recoveredAudioGapsKeepLaterClipsAndScreenshotsAligned() throws {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent("vg-gap-media-test-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let media = try SessionMedia(bufferDirectory: directory)
+    let start = Date(timeIntervalSince1970: 1000)
+    var timeline = CaptureAudioTimeline()
+    func append(_ samples: [Float], at date: Date) throws {
+        let adjustment = try timeline.align(sampleCount: samples.count, at: date)
+        for offset in stride(from: 0, to: adjustment.silenceSamples, by: 16000) {
+            try media.appendAudio(Array(repeating: 0, count: min(16000, adjustment.silenceSamples - offset)), date: date)
+        }
+        try media.appendAudio(Array(samples.dropFirst(adjustment.trimmedSamples)), date: date)
+    }
+    try append(Array(repeating: 0.25, count: 16000), at: start)
+    try media.addScreenshot(Data([1]), date: start)
+    let resumed = start.addingTimeInterval(7.25)
+    try append(Array(repeating: -0.25, count: 16000), at: resumed)
+    try media.addScreenshot(Data([2]), date: resumed)
+    #expect(media.sessionStart == start)
+    #expect(timeline.sampleCount == 132000)
+
+    let silentClip = try media.audioClip(start: 1, end: 7.25, now: start.addingTimeInterval(9))
+    let silence = try AVAudioFile(forReading: silentClip)
+    #expect(silence.length == 100000)
+    let silentBuffer = try #require(AVAudioPCMBuffer(pcmFormat: silence.processingFormat, frameCapacity: AVAudioFrameCount(silence.length)))
+    try silence.read(into: silentBuffer)
+    let silentChannel = try #require(silentBuffer.floatChannelData?[0])
+    #expect(UnsafeBufferPointer(start: silentChannel, count: Int(silentBuffer.frameLength)).allSatisfy { abs($0) < 0.0001 })
+
+    let resumedClip = try media.audioClip(start: 7.25, end: 8.25, now: start.addingTimeInterval(9))
+    let audio = try AVAudioFile(forReading: resumedClip)
+    #expect(audio.length == 16000)
+    let audioBuffer = try #require(AVAudioPCMBuffer(pcmFormat: audio.processingFormat, frameCapacity: AVAudioFrameCount(audio.length)))
+    try audio.read(into: audioBuffer)
+    let channel = try #require(audioBuffer.floatChannelData?[0])
+    #expect(UnsafeBufferPointer(start: channel, count: Int(audioBuffer.frameLength)).allSatisfy { abs($0 + 0.25) < 0.001 })
+    #expect(media.nearbyScreenshots(at: resumed).map(\.date) == [resumed])
+}
+
 @Test @MainActor func previewCleanupCannotDeleteAnotherAppBundlesMedia() throws {
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent("vg-isolation-test-\(UUID())")
     defer { try? FileManager.default.removeItem(at: directory) }
