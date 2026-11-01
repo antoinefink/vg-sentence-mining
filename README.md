@@ -50,6 +50,18 @@ reports sustained overload instead of silently skipping unprocessed audio.
 Qwen's aligned words retain transcript punctuation; malformed timestamps are
 repaired approximately within the audio window.
 
+A small Silero speech detector runs on the CPU before recognition for all three
+models. It skips windows with no detected speech, trims background-only edges,
+and rejects words outside padded speech regions. Original audio timestamps are
+preserved. The detector model lives in `Models/SpeechDetection` on T9. Conservative
+thresholds and context padding protect quiet and brief dialogue; some noise can
+still be mistaken for speech. This reduces hallucinations, not all recognition
+errors.
+
+New screenshots use ScreenCaptureKit's per-frame content rectangle to exclude
+capture-buffer padding before JPEG encoding. Dark pixels inside the game remain
+part of the screenshot.
+
 The speech probe accepts the same pasted-list format:
 
 ```sh

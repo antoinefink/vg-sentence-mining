@@ -75,8 +75,10 @@ import MiningSpeech
         if let conversionError { throw conversionError }
         let audio = Array(UnsafeBufferPointer(start: output.floatChannelData![0], count: Int(output.frameLength)))
         if CommandLine.arguments.contains("--batch") {
+            let recognitionStart = Date()
             let words = try await engine.transcribe(audio, language: language, glossary: glossary)
             print("BATCH: \(words.map(\.text).joined(separator: " "))")
+            print("Recognition: \(Date().timeIntervalSince(recognitionStart))s for \(Double(audio.count) / 16000)s audio")
             if CommandLine.arguments.contains("--words") { for word in words { print("\(word.start)-\(word.end) \(word.text)") } }
             return
         }

@@ -39,6 +39,28 @@ func selectableModelsRecognizeGermanAndSpanishWithValidWordTimings() async throw
             if model.supportsGlossary { #expect(restored.map(\.text).joined(separator: " ").contains("Yennefer")) }
             let silence = try await engine.transcribe(Array(repeating: Float(0), count: 8 * 16000), language: language, glossary: terms)
             #expect(silence.isEmpty)
+            var seed: UInt64 = 17
+            let noise: [Float] = (0..<(8 * 16000)).map { _ in
+                seed = seed &* 6364136223846793005 &+ 1
+                return (Float(seed >> 40) / Float(1 << 24) * 2 - 1) * 0.08
+            }
+            let background = try await engine.transcribe(noise, language: language, glossary: terms)
+            #expect(background.isEmpty)
+            let quiet = try await engine.transcribe(audio.map { $0 * 0.15 }, language: language, glossary: terms)
+            #expect(!quiet.isEmpty)
+            #expect(quiet.count >= words.count - 2)
+            let followedByNoise = try await engine.transcribe(audio + noise, language: language, glossary: terms)
+            #expect(!followedByNoise.isEmpty)
+            if let directory = ProcessInfo.processInfo.environment["VG_SPEECH_REPORT_DIRECTORY"] {
+                let report: [String: Any] = ["model": model.rawValue, "language": language.rawValue,
+                    "quiet": quiet.map { ["text": $0.text, "start": $0.start, "end": $0.end] as [String: Any] },
+                    "background": background.map(\.text),
+                    "speechThenNoise": followedByNoise.map { ["text": $0.text, "start": $0.start, "end": $0.end] as [String: Any] }]
+                let url = URL(fileURLWithPath: directory).appendingPathComponent("\(model.rawValue)-\(fixture)-noise-quiet.json")
+                try JSONSerialization.data(withJSONObject: report, options: [.prettyPrinted, .sortedKeys]).write(to: url, options: .withoutOverwriting)
+            }
+            #expect(followedByNoise.count <= words.count + 2)
+            #expect(followedByNoise.allSatisfy { $0.end <= Double(audio.count) / 16000 + 1.5 }, "\(model.name) \(language): \(followedByNoise.map { "\($0.text)@\($0.start)-\($0.end)" })")
         }
     }
     await engine.unload()

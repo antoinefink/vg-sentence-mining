@@ -7,6 +7,7 @@ import MiningCore
 public actor LocalSpeechEngine {
     private var recognizer: SpeechWorker?
     private var diarizer: LSEENDDiarizer?
+    private var voiceActivity: VadManager?
     private var audioBuffer = RecognitionAudioBuffer()
     private var stitcher = WindowStitcher()
     private var diarizerOffset: Double = 0
@@ -24,6 +25,10 @@ public actor LocalSpeechEngine {
         let worker = try SpeechWorker(runtime: runtime, model: model)
         do {
             try await worker.start()
+            if voiceActivity == nil {
+                voiceActivity = try await VadManager(config: VadConfig(defaultThreshold: SpeechActivityFilter.threshold, computeUnits: .cpuOnly),
+                                                     modelDirectory: modelDirectory.appendingPathComponent("SpeechDetection"))
+            }
             if diarizer == nil {
                 let speakers = LSEENDDiarizer()
                 try await speakers.initialize(variant: .dihard3, cacheDirectory: modelDirectory.appendingPathComponent("Speakers"))
@@ -83,11 +88,17 @@ public actor LocalSpeechEngine {
     }
 
     public func transcribe(_ audio: [Float], language: GameLanguage, glossary: [String] = []) async throws -> [SpokenWord] {
-        guard let recognizer else { throw MiningError.message("Load the local speech models first.") }
+        guard let recognizer, let voiceActivity else { throw MiningError.message("Load the local speech models first.") }
         guard !audio.isEmpty else { return [] }
         guard audio.count <= rate * 32 else { throw MiningError.message("Transcribe at most 32 seconds at a time.") }
         guard audio.contains(where: { abs($0) > 0.00001 }) else { return [] }
-        return try await recognizer.transcribe(audio, language: language, glossary: glossary)
+        let probabilities = try await voiceActivity.process(audio).map(\.probability)
+        let activity = SpeechActivityFilter(probabilities: probabilities, duration: Double(audio.count) / Double(rate))
+        guard let range = activity.sampleRange else { return [] }
+        let offset = Double(range.lowerBound) / Double(rate)
+        let words = try await recognizer.transcribe(Array(audio[range]), language: language, glossary: glossary)
+        return words.map { SpokenWord(text: $0.text, start: $0.start + offset, end: $0.end + offset, speaker: $0.speaker) }
+            .filter { activity.contains($0) }
     }
 
     private func recognize(_ window: RecognitionAudioBuffer.Window, glossary: [String]) async throws -> [SpokenWord] {
