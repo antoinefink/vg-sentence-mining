@@ -1,9 +1,7 @@
 import AVFoundation
 import CoreImage
-import ImageIO
 import MiningCore
 import ScreenCaptureKit
-import UniformTypeIdentifiers
 
 struct AudioPacket: Sendable {
     let samples: [Float]
@@ -77,12 +75,14 @@ final class CaptureService: NSObject, SCStreamOutput, SCStreamDelegate, @uncheck
                 if status == .complete {
                     guard let pixel = buffer.imageBuffer else { return }
                     let image = CIImage(cvPixelBuffer: pixel)
-                    guard let cgImage = context.createCGImage(image, from: image.extent) else { return }
-                    let data = NSMutableData()
-                    guard let destination = CGImageDestinationCreateWithData(data, UTType.jpeg.identifier as CFString, 1, nil) else { return }
-                    CGImageDestinationAddImage(destination, cgImage, [kCGImageDestinationLossyCompressionQuality: 0.72] as CFDictionary)
-                    guard CGImageDestinationFinalize(destination) else { return }
-                    lastImage = data as Data
+                    let contentRect = (attachments.first?[.contentRect] as? [String: Any])
+                        .flatMap { CGRect(dictionaryRepresentation: $0 as CFDictionary) }
+                    let scale = (attachments.first?[.scaleFactor] as? NSNumber)?.doubleValue ?? 1
+                    guard let data = ScreenshotEncoder.jpeg(from: image, contentRect: contentRect, scaleFactor: scale, context: context) else {
+                        lastImage = nil
+                        return
+                    }
+                    lastImage = data
                 }
                 guard let lastImage else { return }
                 lastScreenshot = buffer.presentationTimeStamp.seconds
