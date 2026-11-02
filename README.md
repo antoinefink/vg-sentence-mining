@@ -88,6 +88,15 @@ Only the selected word goes to Replicate and the selected voice provider. The or
 
 ## Retention
 
+Translation errors distinguish login, usage limits, connection failures and the
+60-second timeout. Choose **Regenerate English** to retry. In macOS Console,
+filter by subsystem `io.antoine.vg-sentence-mining` and category `Translation`
+to see request IDs, duration, failure stage and exit code. These logs exclude
+dialogue, prompts, credentials and raw CLI output. Temporary CLI diagnostics
+are deleted after each request. Run the optional live translation check with
+`VG_CODEX_INTEGRATION=1 xcrun swift test --filter CodexTranslationTests`;
+it uses the installed CLI login and sends the test sentence to OpenAI.
+
 Dialogue and screenshots expire from the rolling 30-minute buffer, including selected drafts. Original audio is stored in one-second temporary chunks and removed as each chunk fully expires. Audio previews also expire. Normal app termination clears temporary captures; the next launch clears captures left by an interrupted run.
 
 Exported image and audio files belong to Anki and survive the capture buffer. The app does not save a separate session archive.
