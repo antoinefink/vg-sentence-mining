@@ -7,6 +7,12 @@ public actor CodexTranslator {
     public init() { timeout = 60 }
     init(timeout: TimeInterval) { self.timeout = timeout }
 
+    nonisolated static func launchEnvironment(executable: String, inherited: [String: String], home: URL) -> [String: String] {
+        var environment = inherited
+        environment["PATH"] = [URL(fileURLWithPath: executable).deletingLastPathComponent().path, home.appendingPathComponent(".asdf/shims").path, "/opt/homebrew/bin", "/usr/local/bin", inherited["PATH"] ?? "/usr/bin:/bin:/usr/sbin:/sbin"].joined(separator: ":")
+        return environment
+    }
+
     public func explain(word: String, sentence: String, language: GameLanguage, executable: String) async throws -> WordExplanation {
         let running = TranslationProcess()
         let timeout = timeout
@@ -43,9 +49,7 @@ public actor CodexTranslator {
                 let process = Process()
                 process.executableURL = URL(fileURLWithPath: executable)
                 process.currentDirectoryURL = root
-                var environment = ProcessInfo.processInfo.environment
-                environment["PATH"] = [URL(fileURLWithPath: executable).deletingLastPathComponent().path, "/opt/homebrew/bin", "/usr/local/bin", environment["PATH"] ?? "/usr/bin:/bin:/usr/sbin:/sbin"].joined(separator: ":")
-                process.environment = environment
+                process.environment = Self.launchEnvironment(executable: executable, inherited: ProcessInfo.processInfo.environment, home: FileManager.default.homeDirectoryForCurrentUser)
                 process.arguments = ["exec", "--ignore-user-config", "--ephemeral", "--skip-git-repo-check", "--sandbox", "read-only", "-c", "features.shell_tool=false", "-c", "features.unified_exec=false", "--output-schema", schema.path, "--output-last-message", output.path, "-"]
                 process.standardOutput = FileHandle.nullDevice
                 process.standardError = errors

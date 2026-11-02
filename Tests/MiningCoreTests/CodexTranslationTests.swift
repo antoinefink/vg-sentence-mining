@@ -3,14 +3,38 @@ import Testing
 @testable import MiningCore
 
 struct CodexTranslationTests {
-    @Test(.enabled(if: ProcessInfo.processInfo.environment["VG_CODEX_INTEGRATION"] == "1"))
-    func installedCLITranslatesTheReportedSentence() async throws {
+    @Test func launchesNodeBasedCLIWithoutATerminalPATH() async throws {
+        let home = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let shims = home.appendingPathComponent(".asdf/shims")
+        try FileManager.default.createDirectory(at: shims, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: home) }
+        let node = shims.appendingPathComponent("node")
+        try Data("#!/bin/sh\necho runtime-found\n".utf8).write(to: node)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: node.path)
+        let cli = home.appendingPathComponent("codex")
+        try Data("#!/usr/bin/env node\n".utf8).write(to: cli)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: cli.path)
+        let process = Process()
+        process.executableURL = cli
+        process.environment = CodexTranslator.launchEnvironment(executable: cli.path, inherited: ["PATH": "/usr/bin:/bin", "HOME": home.path], home: home)
+        let output = Pipe()
+        process.standardOutput = output
+        try process.run()
+        process.waitUntilExit()
+        #expect(process.terminationStatus == 0)
+        #expect(String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self) == "runtime-found\n")
+    }
+
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["VG_CODEX_INTEGRATION"] == "1"), arguments: [
+        ("Kaisers", "Der Kontakt des Hexers in Velen sollte Hendrik sein, ein Spion des Kaisers, der in dem dem kriegsversehrten Land inkognito operierte.", "kaiser"),
+        ("Auftrag", "Sein Auftrag lautete, Informationen über Ciri zu beschaffen.", "auftrag")
+    ])
+    func installedCLITranslatesTheReportedSentence(word: String, sentence: String, expected: String) async throws {
         let cli = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".bun/bin/codex").path
         let result = try await CodexTranslator().explain(
-            word: "Kaisers",
-            sentence: "Der Kontakt des Hexers in Velen sollte Hendrik sein, ein Spion des Kaisers, der in dem dem kriegsversehrten Land inkognito operierte.",
+            word: word, sentence: sentence,
             language: .german, executable: cli)
-        #expect(result.dictionaryForm.lowercased() == "kaiser")
+        #expect(result.dictionaryForm.lowercased() == expected)
         #expect(!result.definition.isEmpty)
         #expect(!result.sentenceTranslation.isEmpty)
     }
