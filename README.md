@@ -78,6 +78,14 @@ xcrun swift run -c release speech-probe sample.wav de --model whisper-large-v3 -
 
 ## Word audio and card layout
 
+New Anki exports automatically match word and sentence audio to a similar
+average volume. Normalization ignores silence, limits amplification to 20 dB,
+and leaves peak headroom to avoid clipping. Near-silence stays quiet. A clip
+with a sharp peak can remain quieter to preserve the original waveform.
+Both clips are saved as 16-bit WAV files at their original sample rates;
+word audio can use more storage than the downloaded MP3. Existing cards are
+unchanged. Preview playback uses the original audio.
+
 The app uses your selected note type without changing its templates. For the current profile, the suggested destinations are the German and Spanish **Mining** decks with **Migaku German Custom** and **Migaku Spanish Custom**. The app sets their layout switches automatically: the front shows the target word and generated pronunciation; the back shows the sentence, translation, definition, screenshot and original recording.
 
 Expand **Field mapping** to change where each item goes. Dictionary form and definition may share **Definitions**. Both generated word audio and recorded sentence audio are required; other items can be omitted. **Basic** is also supported, with word audio on **Front** and the remaining content on **Back**. Refreshing and saving Settings do not modify Anki. Only **Send to Anki** creates a note. Export checks that the active profile still matches the saved destination.

@@ -34,6 +34,11 @@ public struct AnkiClient: Sendable {
         try configuration.validate(fields: fieldNames)
         guard try await decks().contains(configuration.deckName) else { throw MiningError.message("The selected Anki deck is missing. Refresh Anki in Settings.") }
         guard try await activeProfile() == configuration.profileName else { throw MiningError.message("Anki changed profiles. Refresh and select an export destination in Settings.") }
+        let normalized = try await Task.detached(priority: .userInitiated) {
+            (word: try AudioNormalizer.normalizedWAV(wordAudio), sentence: try AudioNormalizer.normalizedWAV(sentenceAudio))
+        }.value
+        try Task.checkCancellation()
+        guard try await activeProfile() == configuration.profileName else { throw MiningError.message("Anki changed profiles. Refresh and select an export destination in Settings.") }
         let id = UUID().uuidString.lowercased()
         var values = Dictionary(uniqueKeysWithValues: fieldNames.map { ($0, "") })
         for role in AnkiFieldRole.allCases {
@@ -55,8 +60,8 @@ public struct AnkiClient: Sendable {
             field.isEmpty ? nil : [["filename": "vg-\(id).jpg", "data": screenshot.base64EncodedString(), "fields": [field]]]
         } ?? []
         let audio: [[String: Any]] = [
-            ["filename": "vg-word-\(id).mp3", "data": wordAudio.base64EncodedString(), "fields": [configuration.mapping[.wordAudio]!]],
-            ["filename": "vg-sentence-\(id).wav", "data": sentenceAudio.base64EncodedString(), "fields": [configuration.mapping[.sentenceAudio]!]],
+            ["filename": "vg-word-\(id).wav", "data": normalized.word.base64EncodedString(), "fields": [configuration.mapping[.wordAudio]!]],
+            ["filename": "vg-sentence-\(id).wav", "data": normalized.sentence.base64EncodedString(), "fields": [configuration.mapping[.sentenceAudio]!]],
         ]
         let note: [String: Any] = [
             "deckName": configuration.deckName, "modelName": configuration.noteTypeName, "fields": values,

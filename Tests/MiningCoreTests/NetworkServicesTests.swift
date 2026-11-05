@@ -117,7 +117,7 @@ private final class MockProtocol: URLProtocol, @unchecked Sendable {
             }
             return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, try JSONSerialization.data(withJSONObject: ["result": result, "error": NSNull()]))
         }
-        let wordAudio = Data([1, 2]), sentenceAudio = Data([3, 4]), picture = Data([5, 6])
+        let wordAudio = try AudioFixture.wave(amplitude: 0.02), sentenceAudio = try AudioFixture.wave(amplitude: 0.6), picture = Data([5, 6])
         let configuration = AnkiNoteConfiguration(profileName: "Fixture", deckName: "Default", noteTypeName: "Basic", mapping: AnkiNoteConfiguration.suggestedMapping(fields: ["Front", "Back"]))
         let id = try await AnkiClient(session: network).send(word: "<Wort>", sentence: "Ein <Satz>.", explanation: .init(dictionaryForm: "Wort", definition: "word", sentenceTranslation: "A sentence."), screenshot: picture, sentenceAudio: sentenceAudio, wordAudio: wordAudio, configuration: configuration)
         #expect(id == 123)
@@ -131,9 +131,14 @@ private final class MockProtocol: URLProtocol, @unchecked Sendable {
         let audio = note["audio"] as! [[String: Any]]
         #expect(audio.count == 2)
         #expect(audio[0]["fields"] as? [String] == ["Front"])
-        #expect(audio[0]["data"] as? String == wordAudio.base64EncodedString())
+        #expect((audio[0]["filename"] as? String)?.hasSuffix(".wav") == true)
+        let wordBase64 = try #require(audio[0]["data"] as? String)
+        let exportedWord = try AudioFixture.read(#require(Data(base64Encoded: wordBase64)))
+        #expect(abs(AudioFixture.rms(exportedWord.channels[0]) - 0.1) < 0.002)
         #expect(audio[1]["fields"] as? [String] == ["Back"])
-        #expect(audio[1]["data"] as? String == sentenceAudio.base64EncodedString())
+        let sentenceBase64 = try #require(audio[1]["data"] as? String)
+        let exportedSentence = try AudioFixture.read(#require(Data(base64Encoded: sentenceBase64)))
+        #expect(abs(AudioFixture.rms(exportedSentence.channels[0]) - 0.1) < 0.002)
         #expect((note["picture"] as! [[String: Any]])[0]["fields"] as? [String] == ["Back"])
     }
 
@@ -151,6 +156,30 @@ private final class MockProtocol: URLProtocol, @unchecked Sendable {
         }
         #expect(!actions.withLock { $0 }.contains("addNote"))
         #expect(!actions.withLock { $0 }.contains("storeMediaFile"))
+    }
+
+    @Test func profileChangesWhilePreparingAudioPreventTheExport() async throws {
+        let reads = Mutex(0)
+        let actions = Mutex<[String]>([])
+        let network = session { request in
+            let action = (try JSONSerialization.jsonObject(with: request.httpBody!) as! [String: Any])["action"] as! String
+            actions.withLock { $0.append(action) }
+            let result: Any
+            switch action {
+            case "getActiveProfile": result = reads.withLock { $0 += 1; return $0 == 1 ? "Fixture" : "Changed" }
+            case "deckNames": result = ["Default"]
+            case "modelFieldNames": result = ["Front", "Back"]
+            default: throw MiningError.message("Unexpected write")
+            }
+            return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, try JSONSerialization.data(withJSONObject: ["result": result, "error": NSNull()]))
+        }
+        let audio = try AudioFixture.wave(amplitude: 0.1)
+        let configuration = AnkiNoteConfiguration(profileName: "Fixture", deckName: "Default", noteTypeName: "Basic", mapping: AnkiNoteConfiguration.suggestedMapping(fields: ["Front", "Back"]))
+        await #expect(throws: MiningError.self) {
+            try await AnkiClient(session: network).send(word: "Wort", sentence: "Ein Satz.", explanation: .init(dictionaryForm: "Wort", definition: "word", sentenceTranslation: "A sentence."), screenshot: Data([1]), sentenceAudio: audio, wordAudio: audio, configuration: configuration)
+        }
+        #expect(reads.withLock { $0 } == 2)
+        #expect(!actions.withLock { $0 }.contains("addNote"))
     }
 
     @Test func discoversAnkiProfileDecksAndNoteTypesWithoutAnyWriteActions() async throws {
@@ -209,7 +238,7 @@ private final class MockProtocol: URLProtocol, @unchecked Sendable {
         var configuration = AnkiNoteConfiguration(profileName: "Fixture", deckName: "German::Mining", noteTypeName: "Migaku German Custom", mapping: AnkiNoteConfiguration.suggestedMapping(fields: names))
         configuration.mapping[.vocabularyCard] = "Old field"
         configuration.mapping[.audioCard] = "Target Word"
-        _ = try await AnkiClient(session: network).send(word: "<Wort>", sentence: "Ein <Satz>.", explanation: .init(dictionaryForm: "das Wort", definition: "word & term", sentenceTranslation: "A sentence."), screenshot: Data([1]), sentenceAudio: Data([2]), wordAudio: Data([3]), configuration: configuration)
+        _ = try await AnkiClient(session: network).send(word: "<Wort>", sentence: "Ein <Satz>.", explanation: .init(dictionaryForm: "das Wort", definition: "word & term", sentenceTranslation: "A sentence."), screenshot: Data([1]), sentenceAudio: AudioFixture.wave(amplitude: 0.05), wordAudio: AudioFixture.wave(amplitude: 0.4), configuration: configuration)
         let requests = captured.withLock { $0 }
         let body = try JSONSerialization.jsonObject(with: requests.last!.httpBody!) as! [String: Any]
         let note = (body["params"] as! [String: Any])["note"] as! [String: Any]
