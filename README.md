@@ -20,7 +20,7 @@ The preview opens beside the transcript. Close it to give the transcript the ful
 - Models live at `/Volumes/T9/VG Sentence Mining/Models`; the offline Python/Metal/MLX runtime lives at `/Volumes/T9/VG Sentence Mining/SpeechRuntime`. See [runtime setup](tools/SpeechRuntime/README.md). German and Spanish are selected explicitly. FluidAudio provides anonymous speaker labels, which can be imperfect over music, sound effects and overlapping voices.
 - English assistance runs the installed Codex CLI using its existing login. Configure the executable in Settings if needed. The launch environment includes `~/.asdf/shims` so a Node-based CLI can find its runtime when the app opens from Finder. Codex sends the selected text to OpenAI; speech recognition runs on the Mac.
 - AnkiConnect must listen on `127.0.0.1:8765`. In Settings, refresh the available decks and note types, choose a destination for each language, review the field mapping, then choose **Save**. Choices are stored separately for each Anki profile and language. Settings can be resized.
-- Word pronunciation offers [MiniMax Speech 2.8 HD](https://replicate.com/minimax/speech-2.8-hd), [ElevenLabs v3](https://replicate.com/elevenlabs/v3) and [Inworld Realtime TTS 2](https://replicate.com/inworld/realtime-tts-2) through Replicate. All three support German and Spanish, with an explicit language setting for single words. Enter your Replicate API key in the app's secure setup sheet or Settings. It is stored in macOS Keychain on this device, never in preferences or a project file.
+- Word pronunciation offers [MiniMax Speech 2.8 HD](https://replicate.com/minimax/speech-2.8-hd), [ElevenLabs v3](https://replicate.com/elevenlabs/v3), [Inworld Realtime TTS 2](https://replicate.com/inworld/realtime-tts-2) and [Google Gemini 3.1 Flash TTS](https://replicate.com/google/gemini-3.1-flash-tts) through Replicate. All four support German and Spanish, with an explicit language setting for single words. Enter your Replicate API key in the app's secure setup sheet or Settings. It is stored in macOS Keychain on this device, never in preferences or a project file.
 - macOS controls capture permission and window selection. Choose the source again after restarting the app.
 
 ## Game glossaries
@@ -91,6 +91,12 @@ The app uses your selected note type without changing its templates. For the cur
 Expand **Field mapping** to change where each item goes. Dictionary form and definition may share **Definitions**. Both generated word audio and recorded sentence audio are required; other items can be omitted. **Basic** is also supported, with word audio on **Front** and the remaining content on **Back**. Refreshing and saving Settings do not modify Anki. Only **Send to Anki** creates a note. Export checks that the active profile still matches the saved destination.
 
 After a key is configured, choosing a word generates its pronunciation. You can listen with **Play word** before exporting. Settings provides a **Model** picker plus **Test German voice** and **Test Spanish voice** buttons. The picker defaults to MiniMax 2.8 HD and saves changes immediately. A saved choice of the removed MiniMax 2.6 HD or 2.8 Turbo falls back to 2.8 HD. Changing models cancels pending audio and regenerates the selected draft with the new model. Export waits for valid word audio; a failed generation offers a retry.
+
+Choose **Google Gemini 3.1 Flash TTS** in Settings to use Google's Iapetus
+voice with neutral dictionary-style instructions. Requests explicitly use
+German (`de-DE`) or Spanish from Spain (`es-ES`). Your current model selection
+is preserved when you install the update. Gemini uses the same saved Replicate
+key; see its linked model page for pricing.
 
 Only the selected word goes to Replicate and the selected voice provider. The original game recording stays on the Mac. The listed rates are $0.10 per 1,000 input characters for MiniMax and ElevenLabs and $0.025 for Inworld, about $0.001 or $0.00025 for a ten-character word. Replicate requires an account with API credit. See the linked model pages for current pricing.
 

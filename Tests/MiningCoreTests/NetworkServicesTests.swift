@@ -39,7 +39,7 @@ private final class MockProtocol: URLProtocol, @unchecked Sendable {
         return URLSession(configuration: configuration)
     }
 
-    @Test(arguments: [GameLanguage.german, .spanish], [PronunciationModel.speech28HD, .elevenV3, .inworldTTS2])
+    @Test(arguments: [GameLanguage.german, .spanish], PronunciationModel.allCases)
     func generatesOnlyTheTargetWordWithTheCorrectLanguage(language: GameLanguage, model: PronunciationModel) async throws {
         let requests = Mutex<[URLRequest]>([])
         let audio = Data([73, 68, 51, 1, 2, 3])
@@ -66,6 +66,9 @@ private final class MockProtocol: URLProtocol, @unchecked Sendable {
         case .inworldTTS2:
             expectedPath = "/v1/models/inworld/realtime-tts-2/predictions"
             expectedInput = ["text": word, "voice_id": "Dennis", "language": language == .german ? "de" : "es", "audio_format": "mp3", "sample_rate": 48000]
+        case .gemini31Flash:
+            expectedPath = "/v1/models/google/gemini-3.1-flash-tts/predictions"
+            expectedInput = ["text": word, "voice": "Iapetus", "language_code": language == .german ? "de-DE" : "es-ES", "prompt": "Pronounce only the provided word clearly and naturally, at a measured pace. Use neutral dictionary pronunciation, with no introduction or extra words."]
         }
         #expect(sent[0].url?.path == expectedPath)
         #expect(sent[0].value(forHTTPHeaderField: "Authorization") == "Bearer test-token")

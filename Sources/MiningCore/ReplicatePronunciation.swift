@@ -4,12 +4,14 @@ public enum PronunciationModel: String, CaseIterable, Sendable {
     case speech28HD = "minimax/speech-2.8-hd"
     case elevenV3 = "elevenlabs/v3"
     case inworldTTS2 = "inworld/realtime-tts-2"
+    case gemini31Flash = "google/gemini-3.1-flash-tts"
 
     public var name: String {
         switch self {
         case .speech28HD: "MiniMax Speech 2.8 HD"
         case .elevenV3: "ElevenLabs v3"
         case .inworldTTS2: "Inworld Realtime TTS 2"
+        case .gemini31Flash: "Google Gemini 3.1 Flash TTS"
         }
     }
 
@@ -18,6 +20,7 @@ public enum PronunciationModel: String, CaseIterable, Sendable {
         case .speech28HD: "High-definition speech from MiniMax."
         case .elevenV3: "Expressive multilingual speech from ElevenLabs."
         case .inworldTTS2: "Fast multilingual speech from Inworld."
+        case .gemini31Flash: "Clear dictionary-style pronunciation from Google with the Iapetus voice."
         }
     }
 }
@@ -60,6 +63,8 @@ public struct ReplicatePronunciation: Sendable {
                 input = ["prompt": text, "voice": "Rachel", "language_code": language.rawValue]
             case .inworldTTS2:
                 input = ["text": text, "voice_id": "Dennis", "language": language.rawValue, "audio_format": "mp3", "sample_rate": 48000]
+            case .gemini31Flash:
+                input = ["text": text, "voice": "Iapetus", "language_code": language == .german ? "de-DE" : "es-ES", "prompt": "Pronounce only the provided word clearly and naturally, at a measured pace. Use neutral dictionary pronunciation, with no introduction or extra words."]
             }
             var request = authorized(api.appendingPathComponent("models/\(model.rawValue)/predictions"), token: token)
             request.httpMethod = "POST"
