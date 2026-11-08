@@ -43,7 +43,15 @@ import ScreenCaptureKit
             dictionaryForm = ""; definition = ""; sentenceTranslation = ""
         }
     }
-    @Published var dictionaryForm = ""
+    @Published var dictionaryForm = "" {
+        didSet {
+            guard selected != nil,
+                  LearningTarget.resolve(selectedText: selectedWord, dictionaryForm: oldValue) != learningWord else { return }
+            resetWordPronunciation()
+            updateExportStatus()
+            if hasReplicateToken { generatePronunciation() }
+        }
+    }
     @Published var definition = ""
     @Published var sentenceTranslation = ""
     @Published var frames: [Screenshot] = []
@@ -63,9 +71,8 @@ import ScreenCaptureKit
             guard pronunciationModel != oldValue else { return }
             UserDefaults.standard.set(pronunciationModel.rawValue, forKey: "pronunciationModel")
             stopVoiceTest(); player?.stop()
-            pronunciationID = UUID(); pronunciationTask?.cancel()
-            wordAudio = nil; synthesizing = false; pronunciationError = nil
-            if selected != nil, hasReplicateToken { generatePronunciation() }
+            resetWordPronunciation()
+            if hasReplicateToken { generatePronunciation() }
         }
     }
     @Published var now = Date()
@@ -94,6 +101,8 @@ import ScreenCaptureKit
     private var voiceTestTask: Task<Void, Never>?
     private var voiceTestID = UUID()
     private var player: AVAudioPlayer?
+    private var wordPlayer: AVAudioPlayer?
+    private var wordAudioTarget: String?
     private var timer: AnyCancellable?
     private var audioTimeline = CaptureAudioTimeline()
     private let captureLogger = Logger(subsystem: "io.antoine.vg-sentence-mining", category: "Capture")
@@ -122,6 +131,8 @@ import ScreenCaptureKit
     }
 
     var chosenFrame: Screenshot? { frames.indices.contains(frameIndex) ? frames[frameIndex] : nil }
+    var learningWord: String? { LearningTarget.resolve(selectedText: selectedWord, dictionaryForm: dictionaryForm) }
+    var hasCurrentWordAudio: Bool { wordAudio != nil && learningWord != nil && wordAudioTarget == learningWord }
     var ankiTargetForSelection: AnkiNoteConfiguration? {
         guard let selected, let catalog = ankiCatalog,
               let target = ankiPreferences.configuration(profile: catalog.profileName, language: selected.language),
@@ -130,7 +141,7 @@ import ScreenCaptureKit
         return target
     }
     var canSend: Bool {
-        selected.map { $0.expiresAt > now } == true && ankiTargetForSelection != nil && chosenFrame != nil && wordAudio != nil && !selectedWord.isEmpty && !definition.isEmpty && !sentenceTranslation.isEmpty && !translating && !sending && exportStatus == nil
+        selected.map { $0.expiresAt > now } == true && ankiTargetForSelection != nil && chosenFrame != nil && hasCurrentWordAudio && !definition.isEmpty && !sentenceTranslation.isEmpty && !translating && !sending && exportStatus == nil
     }
     var expiresIn: String {
         let seconds = max(0, Int(selected?.expiresAt.timeIntervalSince(now) ?? 0))
@@ -316,9 +327,8 @@ import ScreenCaptureKit
         sentence = row.text
         frames = media?.nearbyScreenshots(at: row.capturedAt) ?? []
         frameIndex = frames.indices.min(by: { abs(frames[$0].date.timeIntervalSince(row.capturedAt)) < abs(frames[$1].date.timeIntervalSince(row.capturedAt)) }) ?? 0
-        if sentWords[row.id]?.contains(selectedWord) == true { exportStatus = "Already sent to Anki" }
+        updateExportStatus()
         explainSelection()
-        if hasReplicateToken { generatePronunciation() }
     }
 
     func explainSelection() {
@@ -328,6 +338,12 @@ import ScreenCaptureKit
         let initialDictionary = dictionaryForm, initialDefinition = definition, initialTranslation = sentenceTranslation
         translating = true
         translationTask = Task {
+            defer {
+                if translationID == id {
+                    translating = false
+                    if hasReplicateToken, !hasCurrentWordAudio { generatePronunciation() }
+                }
+            }
             do {
                 let result = try await translator.explain(word: word, sentence: text, language: selected.language, executable: executable)
                 guard translationID == id, sentence == text, selected.expiresAt > Date() else { return }
@@ -335,13 +351,26 @@ import ScreenCaptureKit
                 if definition == initialDefinition { definition = result.definition }
                 if sentenceTranslation == initialTranslation { sentenceTranslation = result.sentenceTranslation }
             } catch { if translationID == id { self.error = error.localizedDescription } }
-            if translationID == id { translating = false }
         }
+    }
+
+    private func updateExportStatus() {
+        if let selected, let word = learningWord, sentWords[selected.id]?.contains(word) == true {
+            exportStatus = "Already sent to Anki"
+        } else { exportStatus = nil }
+    }
+
+    private func resetWordPronunciation() {
+        pronunciationID = UUID(); pronunciationTask?.cancel()
+        wordPlayer?.stop(); wordPlayer = nil
+        wordAudio = nil; wordAudioTarget = nil
+        synthesizing = false; pronunciationError = nil
     }
 
     func playClip() {
         guard let selected, let media else { return }
         do {
+            wordPlayer?.stop()
             let url = try media.audioClip(start: max(0, selected.start - 0.2), end: selected.end + 0.3)
             player = try AVAudioPlayer(contentsOf: url)
             player?.play()
@@ -352,7 +381,7 @@ import ScreenCaptureKit
         try tokenStore.save(key)
         hasReplicateToken = true
         showingPronunciationSetup = false
-        if selected != nil { generatePronunciation() }
+        generatePronunciation()
     }
 
     func removeReplicateKey() {
@@ -360,28 +389,29 @@ import ScreenCaptureKit
             try tokenStore.delete()
             stopVoiceTest()
             hasReplicateToken = false
-            pronunciationID = UUID(); pronunciationTask?.cancel()
-            wordAudio = nil; synthesizing = false; pronunciationError = nil
+            resetWordPronunciation()
         } catch { self.error = error.localizedDescription }
     }
 
     func generatePronunciation() {
-        guard let selected, selected.expiresAt > Date(), !synthesizing else { return }
+        guard let selected, selected.expiresAt > Date(), !translating, !synthesizing, let word = learningWord else { return }
         guard hasReplicateToken else { showingPronunciationSetup = true; return }
         let id = UUID(); pronunciationID = id
-        let word = selectedWord, model = pronunciationModel
+        let model = pronunciationModel
         synthesizing = true; pronunciationError = nil
         pronunciationTask = Task {
             defer { if pronunciationID == id { synthesizing = false } }
             do {
+                try await Task.sleep(for: .milliseconds(350))
                 guard let token = try tokenStore.load() else {
                     hasReplicateToken = false; showingPronunciationSetup = true
                     return
                 }
                 let audio = try await pronunciation.generate(word: word, language: selected.language, model: model, token: token)
-                guard pronunciationID == id, self.selected?.id == selected.id, selected.expiresAt > Date() else { return }
+                guard pronunciationID == id, self.selected?.id == selected.id, learningWord == word, selected.expiresAt > Date() else { return }
                 _ = try AVAudioPlayer(data: audio)
                 wordAudio = audio
+                wordAudioTarget = word
             } catch is CancellationError {
             } catch {
                 if pronunciationID == id {
@@ -392,11 +422,12 @@ import ScreenCaptureKit
     }
 
     func playWordAudio() {
-        guard let wordAudio else { return }
+        guard hasCurrentWordAudio, let wordAudio else { return }
         do {
             player?.stop()
-            player = try AVAudioPlayer(data: wordAudio)
-            player?.play()
+            wordPlayer?.stop()
+            wordPlayer = try AVAudioPlayer(data: wordAudio)
+            wordPlayer?.play()
         } catch { pronunciationError = "The word audio could not be played. Please retry." }
     }
 
@@ -413,6 +444,7 @@ import ScreenCaptureKit
                 let audio = try await pronunciation.generate(word: word, language: language, model: model, token: token)
                 try Task.checkCancellation()
                 guard voiceTestID == id else { return }
+                wordPlayer?.stop()
                 player?.stop()
                 player = try AVAudioPlayer(data: audio)
                 player?.play()
@@ -430,9 +462,9 @@ import ScreenCaptureKit
     }
 
     func sendToAnki() {
-        guard canSend, let selected, let media, let frame = chosenFrame, let wordAudio, let target = ankiTargetForSelection else { return }
+        guard canSend, let word = learningWord, let selected, let media, let frame = chosenFrame, let wordAudio, let target = ankiTargetForSelection else { return }
         sending = true
-        let word = selectedWord, text = sentence
+        let text = sentence
         let explanation = WordExplanation(dictionaryForm: dictionaryForm, definition: definition, sentenceTranslation: sentenceTranslation)
         Task {
             defer { sending = false }
@@ -442,7 +474,7 @@ import ScreenCaptureKit
                 let audio = try Data(contentsOf: url), screenshot = try Data(contentsOf: frame.url)
                 let noteID = try await AnkiClient().send(word: word, sentence: text, explanation: explanation, screenshot: screenshot, sentenceAudio: audio, wordAudio: wordAudio, configuration: target)
                 sentWords[selected.id, default: []].insert(word)
-                if self.selected?.id == selected.id, selectedWord == word { exportStatus = "Sent to Anki · note \(noteID)" }
+                if self.selected?.id == selected.id, learningWord == word { exportStatus = "Sent to Anki · note \(noteID)" }
             } catch { self.error = error.localizedDescription }
         }
     }
@@ -530,8 +562,7 @@ import ScreenCaptureKit
 
     private func clearSelection() {
         translationID = UUID(); translationTask?.cancel(); translating = false
-        pronunciationID = UUID(); pronunciationTask?.cancel(); synthesizing = false
-        wordAudio = nil; pronunciationError = nil
+        resetWordPronunciation()
         player?.stop(); player = nil
         selected = nil; selectedWord = ""; sentence = ""; dictionaryForm = ""; definition = ""; sentenceTranslation = ""; frames = []; exportStatus = nil
         do { try media?.clearPreview() } catch { self.error = error.localizedDescription }

@@ -86,6 +86,14 @@ xcrun swift run -c release speech-probe sample.wav de --model whisper-large-v3 -
 
 ## Word audio and card layout
 
+New cards learn dictionary forms. A selected verb such as `verwest` becomes
+`verwesen` on the card and in its generated pronunciation. Common nouns use the singular
+with their definite article; adjectives use their base form. The original
+sentence and its game recording keep the original wording. Selected phrases
+stay as selected. Review or edit **Dictionary form** before export; changing it
+cancels stale word audio and regenerates pronunciation for the new target.
+Existing Anki cards are unchanged.
+
 New Anki exports automatically match word and sentence audio to a similar
 average volume. Normalization ignores silence, limits amplification to 20 dB,
 and leaves peak headroom to avoid clipping. Near-silence stays quiet. A clip
@@ -98,7 +106,7 @@ The app uses your selected note type without changing its templates. For the cur
 
 Expand **Field mapping** to change where each item goes. Dictionary form and definition may share **Definitions**. Both generated word audio and recorded sentence audio are required; other items can be omitted. **Basic** is also supported, with word audio on **Front** and the remaining content on **Back**. Refreshing and saving Settings do not modify Anki. Only **Send to Anki** creates a note. Export checks that the active profile still matches the saved destination.
 
-After a key is configured, choosing a word generates its pronunciation. You can listen with **Play word** before exporting. Settings provides a **Model** picker plus **Test German voice** and **Test Spanish voice** buttons. The picker defaults to MiniMax 2.8 HD and saves changes immediately. A saved choice of the removed MiniMax 2.6 HD or 2.8 Turbo falls back to 2.8 HD. Changing models cancels pending audio and regenerates the selected draft with the new model. Export waits for valid word audio; a failed generation offers a retry.
+After a key is configured, choosing a word prepares its dictionary form and then generates that form's pronunciation. You can listen with **Play word** before exporting. Settings provides a **Model** picker plus **Test German voice** and **Test Spanish voice** buttons. The picker defaults to MiniMax 2.8 HD and saves changes immediately. A saved choice of the removed MiniMax 2.6 HD or 2.8 Turbo falls back to 2.8 HD. Changing models cancels pending audio and regenerates the selected draft with the new model. Export waits for valid word audio; a failed generation offers a retry.
 
 Choose **Google Gemini 3.1 Flash TTS** in Settings to use Google's Iapetus
 voice with neutral dictionary-style instructions. Requests explicitly use
@@ -106,7 +114,7 @@ German (`de-DE`) or Spanish from Spain (`es-ES`). Your current model selection
 is preserved when you install the update. Gemini uses the same saved Replicate
 key; see its linked model page for pricing.
 
-Only the selected word goes to Replicate and the selected voice provider. The original game recording stays on the Mac. The listed rates are $0.10 per 1,000 input characters for MiniMax and ElevenLabs and $0.025 for Inworld, about $0.001 or $0.00025 for a ten-character word. Replicate requires an account with API credit. See the linked model pages for current pricing.
+Only the learning word or selected phrase goes to Replicate and the selected voice provider. The original game recording stays on the Mac. The listed rates are $0.10 per 1,000 input characters for MiniMax and ElevenLabs and $0.025 for Inworld, about $0.001 or $0.00025 for a ten-character word. Replicate requires an account with API credit. See the linked model pages for current pricing.
 
 ## Retention
 

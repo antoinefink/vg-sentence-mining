@@ -26,10 +26,14 @@ struct CodexTranslationTests {
     }
 
     @Test(.enabled(if: ProcessInfo.processInfo.environment["VG_CODEX_INTEGRATION"] == "1"), arguments: [
-        ("Kaisers", "Der Kontakt des Hexers in Velen sollte Hendrik sein, ein Spion des Kaisers, der in dem dem kriegsversehrten Land inkognito operierte.", "kaiser"),
-        ("Auftrag", "Sein Auftrag lautete, Informationen über Ciri zu beschaffen.", "auftrag")
+        ("Kaisers", "Der Kontakt des Hexers in Velen sollte Hendrik sein, ein Spion des Kaisers, der in dem dem kriegsversehrten Land inkognito operierte.", "der kaiser"),
+        ("Auftrag", "Sein Auftrag lautete, Informationen über Ciri zu beschaffen.", "der auftrag"),
+        ("verwest", "Ich hoffe, dass seine Leiche nicht in der Sonne verwest.", "verwesen"),
+        ("Häusern", "Wir wohnen in großen Häusern.", "das haus"),
+        ("grünen", "Sie sitzt auf dem grünen Stuhl.", "grün"),
+        ("Ciri", "Wir suchen Ciri.", "ciri")
     ])
-    func installedCLITranslatesTheReportedSentence(word: String, sentence: String, expected: String) async throws {
+    func installedCLIUsesDictionaryFormsInContext(word: String, sentence: String, expected: String) async throws {
         let cli = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".bun/bin/codex").path
         let result = try await CodexTranslator().explain(
             word: word, sentence: sentence,

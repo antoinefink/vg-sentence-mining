@@ -198,7 +198,12 @@ private struct WordInspector: View {
         if let selected = model.selected {
             VStack(spacing: 0) {
                 HStack(alignment: .firstTextBaseline) {
-                    Text(model.selectedWord).font(.title2).fontWeight(.semibold)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(model.learningWord ?? model.selectedWord).font(.title2).fontWeight(.semibold)
+                        if let word = model.learningWord, word != model.selectedWord {
+                            Text("In sentence: \(model.selectedWord)").font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
                     Spacer()
                     Text(model.expiresIn).font(.caption).monospacedDigit().foregroundStyle(.secondary).help("Time left in the 30-minute buffer")
                     Button { model.dismissSelection() } label: { Image(systemName: "xmark") }.buttonStyle(.borderless).accessibilityLabel("Close word preview")
@@ -206,14 +211,18 @@ private struct WordInspector: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 18) {
                         HStack(spacing: 8) {
-                            if model.synthesizing {
+                            if model.translating && model.learningWord == nil {
+                                ProgressView().controlSize(.small)
+                                Text("Preparing dictionary form…").font(.callout).foregroundStyle(.secondary)
+                            } else if model.synthesizing {
                                 ProgressView().controlSize(.small)
                                 Text("Preparing word pronunciation…").font(.callout).foregroundStyle(.secondary)
-                            } else if model.wordAudio != nil {
+                            } else if model.hasCurrentWordAudio {
                                 Button(action: model.playWordAudio) { Label("Play word", systemImage: "speaker.wave.2") }
                                 Text("Anki front").font(.caption).foregroundStyle(.secondary)
                             } else {
                                 Button(model.hasReplicateToken ? "Generate word audio" : "Set up word audio…", action: model.generatePronunciation)
+                                    .disabled(model.learningWord == nil || model.translating)
                             }
                         }
                         if let error = model.pronunciationError { Text(error).font(.caption).foregroundStyle(.red) }
@@ -233,6 +242,8 @@ private struct WordInspector: View {
                             HStack(spacing: 8) { ProgressView().controlSize(.small); Text("Preparing English…").font(.callout).foregroundStyle(.secondary) }
                         }
                         field("Dictionary form", text: $model.dictionaryForm)
+                        Text("Single words use this form on the Anki card and in word audio. Selected phrases stay unchanged.")
+                            .font(.caption).foregroundStyle(.secondary)
                         field("Meaning in this sentence", text: $model.definition)
                         Divider()
                         field("Original sentence", text: $model.sentence)

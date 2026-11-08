@@ -145,6 +145,52 @@ private final class MockProtocol: URLProtocol, @unchecked Sendable {
         #expect((note["picture"] as! [[String: Any]])[0]["fields"] as? [String] == ["Back"])
     }
 
+    @Test(arguments: [
+        ("verwest", "verwesen", "Seine Leiche verwest in der Sonne.", "verwesen"),
+        ("Häusern", "das Haus", "Wir wohnen in großen Häusern.", "das Haus"),
+        ("grünen", "grün", "Sie sitzt auf dem grünen Stuhl.", "grün"),
+        ("in der Sonne", "Sonne", "Er sitzt in der Sonne.", "in der Sonne")
+    ])
+    func dictionaryTargetIsPronouncedAndExportedWithTheOriginalSentence(selected: String, dictionary: String, sentence: String, expected: String) async throws {
+        let requests = Mutex<[URLRequest]>([])
+        let audio = try AudioFixture.wave(amplitude: 0.1)
+        let names = ["Target Word", "Definitions", "Sentence", "Sentence Translation", "Word Audio", "Sentence Audio", "Screenshot", "Is Audio Card", "Is Vocabulary Card"]
+        let network = session { request in
+            requests.withLock { $0.append(request) }
+            let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+            if request.url?.host == "replicate.delivery" { return (response, audio) }
+            if request.url?.host == "api.replicate.com" {
+                return (response, try JSONSerialization.data(withJSONObject: [
+                    "id": "fixture", "status": "succeeded", "output": "https://replicate.delivery/fixture.wav"
+                ]))
+            }
+            let body = try JSONSerialization.jsonObject(with: request.httpBody!) as! [String: Any]
+            let result: Any
+            switch body["action"] as? String {
+            case "getActiveProfile": result = "Fixture"
+            case "deckNames": result = ["German::Mining"]
+            case "modelFieldNames": result = names
+            default: result = 123
+            }
+            return (response, try JSONSerialization.data(withJSONObject: ["result": result, "error": NSNull()]))
+        }
+        let target = try #require(LearningTarget.resolve(selectedText: selected, dictionaryForm: dictionary))
+        let wordAudio = try await ReplicatePronunciation(session: network).generate(word: target, language: .german, token: "test-token")
+        let configuration = AnkiNoteConfiguration(profileName: "Fixture", deckName: "German::Mining", noteTypeName: "Migaku German Custom", mapping: AnkiNoteConfiguration.suggestedMapping(fields: names))
+        _ = try await AnkiClient(session: network).send(word: target, sentence: sentence,
+            explanation: .init(dictionaryForm: dictionary, definition: "Contextual meaning", sentenceTranslation: "Translation"),
+            screenshot: Data([1]), sentenceAudio: audio, wordAudio: wordAudio, configuration: configuration)
+        let captured = requests.withLock { $0 }
+        let tts = try #require(captured.first { $0.url?.host == "api.replicate.com" })
+        let ttsBody = try JSONSerialization.jsonObject(with: tts.httpBody!) as! [String: Any]
+        #expect((ttsBody["input"] as! [String: Any])["text"] as? String == expected)
+        let exported = try JSONSerialization.jsonObject(with: captured.last!.httpBody!) as! [String: Any]
+        let note = (exported["params"] as! [String: Any])["note"] as! [String: Any]
+        let fields = note["fields"] as! [String: String]
+        #expect(fields["Target Word"] == expected)
+        #expect(fields["Sentence"] == sentence)
+    }
+
     @Test func profileChangesPreventEveryAnkiWrite() async throws {
         let actions = Mutex<[String]>([])
         let network = session { request in
