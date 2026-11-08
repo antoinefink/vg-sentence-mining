@@ -29,17 +29,18 @@ final class SpeechWorker: @unchecked Sendable {
     private var pending = Data()
     private let model: TranscriptionModel
     private let log: FileHandle
+    private let logURL: URL
 
-    init(runtime: URL, model: TranscriptionModel) throws {
+    init(runtime: URL, models: URL, model: TranscriptionModel) throws {
         self.model = model
         let python = runtime.appendingPathComponent(".venv/bin/python")
         guard FileManager.default.isExecutableFile(atPath: python.path),
               let script = Bundle.module.url(forResource: "speech_worker", withExtension: "py") else {
-            throw MiningError.message("The speech runtime is missing on T9. Run tools/SpeechRuntime/install.py, then reload the models.")
+            throw MiningError.message("The speech engine is missing at \(runtime.path). Choose the speech folder containing Models and SpeechRuntime in Settings, or run tools/SpeechRuntime/install.py.")
         }
         let logs = runtime.appendingPathComponent("Logs", isDirectory: true)
         try FileManager.default.createDirectory(at: logs, withIntermediateDirectories: true)
-        let logURL = logs.appendingPathComponent("\(model.rawValue).log")
+        logURL = logs.appendingPathComponent("\(model.rawValue).log")
         if let size = try? logURL.resourceValues(forKeys: [.fileSizeKey]).fileSize, size > 8 * 1024 * 1024 {
             let previous = logURL.appendingPathExtension("previous")
             if FileManager.default.fileExists(atPath: previous.path) { try FileManager.default.removeItem(at: previous) }
@@ -51,7 +52,7 @@ final class SpeechWorker: @unchecked Sendable {
         log = try FileHandle(forWritingTo: logURL)
         try log.seekToEnd()
         process.executableURL = python
-        process.arguments = ["-u", script.path, "--runtime", runtime.path, "--model", model.rawValue]
+        process.arguments = ["-u", script.path, "--runtime", runtime.path, "--models", models.path, "--model", model.rawValue]
         var environment = ProcessInfo.processInfo.environment
         environment["HF_HUB_OFFLINE"] = "1"
         environment["TOKENIZERS_PARALLELISM"] = "false"
@@ -73,7 +74,7 @@ final class SpeechWorker: @unchecked Sendable {
             let reply = try self.readReply()
             guard reply.error == nil, reply.kind == "ready", reply.protocol == 1, reply.model == self.model.rawValue,
                   reply.glossarySupported == self.model.supportsGlossary else {
-                throw MiningError.message("The local speech runtime could not load \(self.model.name). See its log on T9.")
+                throw MiningError.message("The local speech runtime could not load \(self.model.name). See \(self.logURL.path).")
             }
         }
     }
@@ -92,7 +93,7 @@ final class SpeechWorker: @unchecked Sendable {
             guard let words = reply.words else { throw MiningError.message("The speech runtime returned no word timings.") }
             let duration = Double(audio.count) / 16000
             guard words.allSatisfy({ !$0.text.isEmpty && $0.start.isFinite && $0.end.isFinite && $0.start >= 0 && $0.end > $0.start && $0.end <= duration + 0.001 }) else {
-                throw MiningError.message("The speech runtime returned invalid word timings. See its log on T9.")
+                throw MiningError.message("The speech runtime returned invalid word timings. See \(self.logURL.path).")
             }
             return words.map { SpokenWord(text: $0.text, start: $0.start, end: min(duration, $0.end)) }
         }
@@ -156,7 +157,7 @@ final class SpeechWorker: @unchecked Sendable {
             }
             let chunk = output.fileHandleForReading.availableData
             guard !chunk.isEmpty else {
-                throw MiningError.message("The local speech runtime stopped or timed out. Reload the models; its diagnostic log is on T9.")
+                throw MiningError.message("The local speech runtime stopped or timed out. Reload the models; see \(logURL.path).")
             }
             pending.append(chunk)
         }

@@ -128,16 +128,30 @@ def is_silent(audio) -> bool:
     return not any(abs(sample) > 1e-5 for sample in audio)
 
 
+def model_path(models: Path, name: str, metadata: dict) -> Path:
+    relative = Path(metadata["path"])
+    if relative.is_absolute():
+        # Older installed manifests recorded absolute paths. Rebase their
+        # installed layout onto the folder explicitly selected by the user.
+        relative = Path(name) / metadata["revision"]
+        if name == "parakeet-ultra":
+            relative /= Path(metadata["path"]).name
+    if relative.is_absolute() or ".." in relative.parts:
+        raise ValueError("The model manifest path must stay within the models folder.")
+    selected = models / relative
+    if not selected.exists():
+        raise FileNotFoundError(f"The installed {name} model is missing from the selected models folder.")
+    return selected
+
+
 class Runner:
-    def __init__(self, runtime: Path, model: str):
+    def __init__(self, runtime: Path, model: str, models: Path):
         manifest = json.loads((runtime / "manifest.json").read_text())
         if manifest["protocol"] != 1:
             raise ValueError("Unsupported speech runtime protocol.")
         self.model = model
         self.glossary_supported = model != "parakeet-ultra"
-        path = manifest["models"][model]["path"]
-        if not Path(path).exists():
-            raise FileNotFoundError("The installed speech model is missing.")
+        path = str(model_path(models, model, manifest["models"][model]))
         self.path = path
         if model == "parakeet-ultra":
             sys.path.insert(0, str(runtime / manifest["native"]["pythonPath"]))
@@ -154,7 +168,7 @@ class Runner:
             import mlx.core as mx
             from mlx_qwen3_asr import ForcedAligner, Session
             self.session = Session(model=path, dtype=mx.float16)
-            aligner_path = manifest["models"]["qwen3-aligner"]["path"]
+            aligner_path = str(model_path(models, "qwen3-aligner", manifest["models"]["qwen3-aligner"]))
             if not Path(aligner_path).is_dir():
                 raise FileNotFoundError("The installed word alignment model is missing.")
             self.aligner = ForcedAligner(model_path=aligner_path, dtype=mx.float16, backend="mlx")
@@ -213,13 +227,14 @@ def main() -> int:
         protocol.flush()
     parser = argparse.ArgumentParser()
     parser.add_argument("--runtime", type=Path, required=True)
+    parser.add_argument("--models", type=Path, required=True)
     parser.add_argument("--model", choices=MODELS, required=True)
     args = parser.parse_args()
     runner = None
     try:
         configure_offline(args.runtime)
         import numpy as np
-        runner = Runner(args.runtime, args.model)
+        runner = Runner(args.runtime, args.model, args.models)
         emit({"kind": "ready", "protocol": 1, "model": args.model,
               "glossarySupported": runner.glossary_supported})
     except Exception:

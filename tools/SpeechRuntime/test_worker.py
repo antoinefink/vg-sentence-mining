@@ -8,7 +8,9 @@ import struct
 import subprocess
 import sys
 import tempfile
+import types
 import unittest
+from unittest.mock import patch
 
 WORKER = Path(__file__).resolve().parents[2] / "Sources/MiningSpeech/Resources/speech_worker.py"
 spec = importlib.util.spec_from_file_location("speech_worker", WORKER)
@@ -19,6 +21,85 @@ spec.loader.exec_module(worker)
 def request(samples, **overrides):
     return {"id": "abdc-1234", "audio": base64.b64encode(struct.pack("<" + "f" * len(samples), *samples)).decode(),
             "language": "de", "glossary": [], **overrides}
+
+
+class ModelLocationTests(unittest.TestCase):
+    def test_runner_loads_selected_folder_with_a_legacy_manifest(self):
+        with tempfile.TemporaryDirectory() as directory:
+            runtime = Path(directory) / "runtime"
+            runtime.mkdir()
+            models = Path(directory) / "Chosen Models"
+            selected = models / "whisper-large-v3" / "revision-1"
+            selected.mkdir(parents=True)
+            (runtime / "manifest.json").write_text(json.dumps({
+                "protocol": 1, "models": {"whisper-large-v3": {
+                    "path": "/old/disk/models/whisper-large-v3/revision-1", "revision": "revision-1"
+                }}
+            }))
+            loaded = []
+            module = types.SimpleNamespace(
+                ModelHolder=types.SimpleNamespace(get_model=lambda path, dtype: loaded.append(path)),
+                transcribe=lambda *args, **kwargs: None)
+            mx = types.SimpleNamespace(float16="float16")
+            with patch.dict(sys.modules, {"mlx": types.SimpleNamespace(core=mx), "mlx.core": mx}), \
+                    patch.object(worker.importlib, "import_module", return_value=module):
+                worker.Runner(runtime, "whisper-large-v3", models)
+            self.assertEqual(loaded, [str(selected)])
+
+    def test_moved_models_override_old_absolute_manifest_paths(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            old = root / "original" / "whisper-large-v3" / "revision-1"
+            old.mkdir(parents=True)
+            selected = root / "Selected Models"
+            moved = selected / "whisper-large-v3" / "revision-1"
+            moved.mkdir(parents=True)
+            metadata = {"path": str(old), "revision": "revision-1"}
+            self.assertEqual(worker.model_path(selected, "whisper-large-v3", metadata), moved)
+            moved.rmdir()
+            with self.assertRaises(FileNotFoundError):
+                worker.model_path(selected, "whisper-large-v3", metadata)
+
+    def test_relative_manifest_and_native_file_are_relocatable(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            native = root / "parakeet-ultra" / "revision-2" / "model-q8.gguf"
+            native.parent.mkdir(parents=True)
+            native.touch()
+            for stored in ["/old/models/parakeet-ultra/revision-2/model-q8.gguf",
+                           "parakeet-ultra/revision-2/model-q8.gguf"]:
+                self.assertEqual(worker.model_path(root, "parakeet-ultra", {
+                    "path": stored, "revision": "revision-2"
+                }), native)
+            aligner = root / "qwen3-aligner" / "revision-3"
+            aligner.mkdir(parents=True)
+            self.assertEqual(worker.model_path(root, "qwen3-aligner", {
+                "path": "qwen3-aligner/revision-3", "revision": "revision-3"
+            }), aligner)
+
+    def test_installer_writes_portable_model_paths(self):
+        install_path = Path(__file__).with_name("install.py")
+        install_spec = importlib.util.spec_from_file_location("speech_install", install_path)
+        installer = importlib.util.module_from_spec(install_spec)
+        install_spec.loader.exec_module(installer)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "benchmark"
+            (source / "models").mkdir(parents=True)
+            for name in installer.MODEL_IDS:
+                origin = root / "downloaded" / name
+                origin.mkdir(parents=True)
+                weights = origin / "weights.bin"
+                weights.write_bytes(b"fixture weights")
+                (source / "models" / f"{name}.json").write_text(json.dumps({
+                    "id": name, "status": "downloaded", "revision": "revision-1", "repository": "example/model",
+                    "path": str(weights if name == "parakeet-ultra" else origin)
+                }))
+            selected = root / "Installed Models"
+            entries = installer.install_models(source, selected)
+            for name, metadata in entries.items():
+                self.assertFalse(Path(metadata["path"]).is_absolute())
+                self.assertTrue(worker.model_path(selected, name, metadata).exists())
 
 
 class NormalizationTests(unittest.TestCase):
@@ -123,7 +204,7 @@ w = importlib.util.module_from_spec(spec); spec.loader.exec_module(w)
 sys.modules["numpy"] = types.SimpleNamespace(asarray=lambda a, dtype: a, float32=float)
 class Runner:
     glossary_supported = True
-    def __init__(self, runtime, model):
+    def __init__(self, runtime, model, models):
         print("python loader noise", flush=True)
         os.write(1, b"native loader noise\\n")
     def run(self, audio, language, glossary):
@@ -132,7 +213,7 @@ class Runner:
         return {"text":"Hallo!", "words":[{"text":"Hallo!", "start":0.0, "end":0.02}]}
     def close(self): os.write(2, b"closed\\n")
 w.Runner = Runner
-sys.argv = [sys.argv[1], "--runtime", sys.argv[2], "--model", "whisper-large-v3"]
+sys.argv = [sys.argv[1], "--runtime", sys.argv[2], "--models", sys.argv[2], "--model", "whisper-large-v3"]
 raise SystemExit(w.main())
 '''
         with tempfile.TemporaryDirectory() as directory:

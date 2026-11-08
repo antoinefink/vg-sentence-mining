@@ -1,10 +1,10 @@
 # Local ASR comparison
 
-Compare the requested models on the same retained German game audio and secondary Spanish checks. Keep audio, checkpoints, environments, logs and results on T9. These scripts run natively because MLX and the Parakeet runtime use Apple's Metal GPU. Use Docker for CPU-only code checks.
+Compare the requested models on the same retained German game audio and secondary Spanish checks. Keep audio, checkpoints, environments, logs and results in a chosen local run directory. These scripts run natively because MLX and the Parakeet runtime use Apple's Metal GPU. Use Docker for CPU-only code checks.
 
-The current run root is `/Volumes/T9/VG Sentence Mining/Benchmarks/2026-10-31-local-asr`.
+Choose a run root such as `/path/to/Benchmarks/local-asr`.
 
-`download_models.py ROOT` records exact model revisions and resolves public checkpoints into the T9 cache. `prepare_cases.py ROOT` prepares common 16 kHz mono PCM inputs, subtitle-derived German reference text, existing synthetic name fixtures, silence, and three fixed Spanish OpenSLR 61 recordings. It expects the audio archives and Spanish source files recorded in the run directory.
+`download_models.py ROOT` records exact model revisions and resolves public checkpoints into that run's cache. `prepare_cases.py ROOT GAME_CAPTURE_DIRECTORY` prepares common 16 kHz mono PCM inputs, subtitle-derived German reference text, existing synthetic name fixtures, silence, and three fixed Spanish OpenSLR 61 recordings. Pass the retained game-capture directory explicitly; the Spanish source files must be in the run directory.
 
 `run_model.py ROOT MODEL --stage suite` keeps a model loaded while running glossary off/on where supported, with two repetitions. Every result is written and read back before the next case. `smoke`, `windows`, and `long` stages provide a first-case check, common four-to-eight-second windows, and the retained continuous recording. The window stage measures inference cost, not end-to-end application latency.
 

@@ -8,6 +8,7 @@ import ScreenCaptureKit
 
 @MainActor final class AppModel: ObservableObject {
     @Published private(set) var transcriptionModel = TranscriptionModel(rawValue: UserDefaults.standard.string(forKey: "transcriptionModel") ?? "") ?? .parakeetUltra
+    @Published private(set) var speechDirectories = SpeechDirectories.load()
     var canChangeTranscriptionModel: Bool { !loadingModels && !recording && !starting && !stopping && !choosingWindow }
     @Published var language: GameLanguage = .german
     @Published var glossaryPreferences: GameGlossaryPreferences = {
@@ -138,16 +139,48 @@ import ScreenCaptureKit
 
     func loadModels() {
         guard canChangeTranscriptionModel else { return }
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: speechDirectories.modelsDirectory.path, isDirectory: &isDirectory), isDirectory.boolValue else {
+            modelsReady = false
+            status = "Choose your installed speech folder in Settings."
+            return
+        }
+        let directories = speechDirectories
         loadingModels = true
         modelsReady = false
-        status = "Loading \(transcriptionModel.name) from T9…"
+        status = "Loading \(transcriptionModel.name)…"
         Task {
             defer { loadingModels = false }
             do {
-                try await speech.prepare(modelDirectory: URL(fileURLWithPath: "/Volumes/T9/VG Sentence Mining/Models"), model: transcriptionModel)
+                try await speech.prepare(modelDirectory: directories.modelsDirectory, model: transcriptionModel)
                 modelsReady = true
                 status = "\(transcriptionModel.name) ready. Choose the game window."
             } catch { self.error = error.localizedDescription; status = "Models could not load." }
+        }
+    }
+
+    func chooseSpeechFolder() {
+        guard canChangeTranscriptionModel else { return }
+        let panel = NSOpenPanel()
+        panel.title = "Choose the speech folder"
+        panel.message = "Choose the folder containing Models and SpeechRuntime."
+        panel.prompt = "Use Folder"
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.canCreateDirectories = false
+        panel.directoryURL = speechDirectories.directory
+        guard panel.runModal() == .OK, let url = panel.url, canChangeTranscriptionModel else { return }
+        let directories = SpeechDirectories(directory: url)
+        guard directories != speechDirectories else { return }
+        speechDirectories = directories
+        directories.save()
+        modelsReady = false
+        loadingModels = true
+        status = "Speech folder saved. Load the models to continue."
+        Task {
+            await speech.unload()
+            loadingModels = false
         }
     }
 

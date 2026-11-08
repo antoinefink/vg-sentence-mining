@@ -69,7 +69,7 @@ with (ROOT / "summary.csv").open("w", newline="") as handle:
     writer.writeheader()
     writer.writerows(summary)
 
-lines = ["# Local German-first ASR comparison", "", "Measured on this Mac on 2026-10-31. All audio, models and raw results are retained on T9.", ""]
+lines = ["# Local German-first ASR comparison", "", "Measured on this Mac on 2026-10-31. All audio, models and raw results are retained in the selected run directory.", ""]
 if decision:
     lines += ["## Recommendation", "", decision["recommendation"], "", decision["tradeoff"], "", decision["app_state"], "",
               "Before adoption:", "", *[f"- {item}" for item in decision["before_adoption"]], "",
@@ -114,7 +114,7 @@ lines += ["", "These are raw-model checks. The current app already suppresses ex
 
 sections = ["<!doctype html><html lang='en'><meta charset='utf-8'><title>Local ASR comparison</title>",
             "<style>body{font:16px system-ui;max-width:1100px;margin:40px auto;padding:0 24px;color:#171717;background:#fafafa}table{border-collapse:collapse;width:100%;margin:24px 0}td,th{padding:12px;text-align:left;border-bottom:1px solid #ddd}article{background:white;padding:24px;margin:20px 0;border:1px solid #ddd;border-radius:10px}p{line-height:1.55}small{color:#666}audio{width:100%}code{font-size:13px}</style>",
-            "<h1>Local German-first ASR comparison</h1><p>Same retained audio. German is the priority. Exact models, raw outputs and timings stay on T9.</p>",
+            "<h1>Local German-first ASR comparison</h1><p>Same retained audio. German is the priority. Exact models, raw outputs and timings stay in the selected run directory.</p>",
             "<p><a href='REPORT.md'>Full report and limitations</a> · <a href='summary.csv'>Summary CSV</a> · <a href='summary.json'>Summary JSON</a></p>",
             "<table><tr><th>Model</th><th>Game WER</th><th>16.2 s passage</th><th>Window median / p95</th><th>Names off / on</th></tr>"]
 for row in summary:

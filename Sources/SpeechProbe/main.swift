@@ -40,7 +40,17 @@ import MiningSpeech
 
     static func main() async throws {
         let engine = LocalSpeechEngine()
-        let root = URL(fileURLWithPath: "/Volumes/T9/VG Sentence Mining/Models", isDirectory: true)
+        var directories = SpeechDirectories.load(
+            defaults: UserDefaults(suiteName: "io.antoine.vg-sentence-mining") ?? .standard,
+            environment: ProcessInfo.processInfo.environment)
+        if let flag = CommandLine.arguments.firstIndex(of: "--speech-folder") {
+            guard CommandLine.arguments.indices.contains(flag + 1), !CommandLine.arguments[flag + 1].hasPrefix("--") else {
+                throw MiningError.message("--speech-folder requires a folder path.")
+            }
+            directories = SpeechDirectories(directory: URL(
+                fileURLWithPath: (CommandLine.arguments[flag + 1] as NSString).expandingTildeInPath, isDirectory: true))
+        }
+        let root = directories.modelsDirectory
         let loadStart = Date()
         let modelFlag = CommandLine.arguments.firstIndex(of: "--model")
         let model: TranscriptionModel

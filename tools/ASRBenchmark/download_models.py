@@ -1,4 +1,4 @@
-"""Download pinned public checkpoints into the user's T9 benchmark directory."""
+"""Download pinned public checkpoints into the chosen benchmark directory."""
 from concurrent.futures import ThreadPoolExecutor
 import json
 import os

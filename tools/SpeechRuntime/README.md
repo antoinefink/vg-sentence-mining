@@ -17,17 +17,28 @@ Install from the retained benchmark assets, with no network downloads:
 
 ```sh
 python3 tools/SpeechRuntime/install.py \
-  --source '/Volumes/T9/VG Sentence Mining/Benchmarks/2026-10-31-local-asr' \
-  --runtime '/Volumes/T9/VG Sentence Mining/SpeechRuntime' \
-  --models '/Volumes/T9/VG Sentence Mining/Models'
+  --source /path/to/retained-benchmark \
+  --destination "$HOME/Library/Application Support/VG Sentence Mining"
 ```
+
+This is an example destination. Choose any writable speech folder on your Mac
+or an external drive. The installer creates `Models` and `SpeechRuntime` inside
+it. Select that one parent folder in **Settings → Transcription** and reload
+the model. The app remembers your choice. Folder changes are disabled during
+capture or model loading.
+
+Move the whole speech folder to change disks. Keep the model folder's installed layout: each model has a
+revision subfolder; the native model also contains its GGUF file. New manifests
+store model paths relative to this folder. The app also rebases older absolute
+manifest paths onto the selected folder, including the word aligner. Recognition
+does not fall back to a model left behind in the original location.
 
 The installer pins the measured package versions, uses the retained uv cache,
 creates independent model paths by dereferencing snapshot symlinks, copies and
 signs the native libraries, and writes `SpeechRuntime/manifest.json` with model
 revisions. The environment uses the installed Homebrew Python 3.12.11 interpreter.
 Keep that interpreter installed. Model assets, Python packages, caches, logs and
-native libraries live on T9. The app bundles only its worker script.
+native libraries live in your speech folder. The app bundles only its worker script.
 
 Recognition uses an offline JSON-lines connection over private pipes. Audio is
 mono float32 at 16 kHz, limited to 32 seconds per request. Model switches terminate
@@ -45,7 +56,11 @@ Run the native model-switching and German/Spanish fixture check:
 VG_SPEECH_INTEGRATION=1 xcrun swift test -c release
 ```
 
-To retain its output, set `VG_SPEECH_REPORT_DIRECTORY` to a new existing directory
-on T9. Reports refuse to overwrite existing files. Use the speech probe with
+The probe and integration tests read the app's saved speech folder. Set
+`VG_SPEECH_DIRECTORY` for a separate installation;
+the probe also accepts `--speech-folder PATH`.
+
+To retain its output, set `VG_SPEECH_REPORT_DIRECTORY` to a new existing directory.
+Reports refuse to overwrite existing files. Use the speech probe with
 `--model parakeet-ultra`, `--model whisper-large-v3`, or
 `--model qwen3-asr-1.7b` to save paced game-dialogue reports.

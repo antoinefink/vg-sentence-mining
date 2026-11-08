@@ -2,9 +2,9 @@
 
 A native SwiftUI macOS app for collecting German and Spanish vocabulary from game dialogue.
 
-Experimental, Apple Silicon only. The current speech setup expects an external
-volume named `T9` and a separately prepared local runtime. Model weights and
-runtime packages are not bundled. See [runtime setup](tools/SpeechRuntime/README.md)
+Experimental, Apple Silicon only. Speech recognition uses installed model files
+and a separately prepared local runtime. One speech folder holds both on your Mac or an
+external drive. Model weights and runtime packages are not bundled. See [runtime setup](tools/SpeechRuntime/README.md)
 before starting capture. The app can be built and its unit tests can run without
 those model assets.
 
@@ -14,7 +14,7 @@ audio and screenshots are not included in this repository.
 
 ## Use
 
-1. Connect the T9 drive and open the app.
+1. Open Settings and choose your installed **Speech folder** under Transcription. Choose **Reload model**.
 2. Choose German or Spanish and an optional game glossary in the header. Choose **Start capture**, then choose the game window in the macOS sharing picker.
 3. Play your game. Return to the app and click a word in the recent dialogue.
 4. Review the screenshot, English definition and translation. Play the generated word pronunciation and the original sentence audio. Sentence clip padding is automatic.
@@ -25,7 +25,7 @@ The preview opens beside the transcript. Close it to give the transcript the ful
 ## Local setup
 
 - Choose **Transcription → Model** in Settings: **Parakeet Ultra** (the default, fastest in our German tests), **Whisper Large V3**, or **Qwen3-ASR 1.7B (Experimental)**. Stop capture before switching. The choice saves immediately, unloads the previous ASR process, and loads only the selected model.
-- Models live at `/Volumes/T9/VG Sentence Mining/Models`; the offline Python/Metal/MLX runtime lives at `/Volumes/T9/VG Sentence Mining/SpeechRuntime`. See [runtime setup](tools/SpeechRuntime/README.md). German and Spanish are selected explicitly. FluidAudio provides anonymous speaker labels, which can be imperfect over music, sound effects and overlapping voices.
+- Choose one **Speech folder** in **Settings → Transcription**. Your choice saves automatically. It contains the installed `Models` and `SpeechRuntime` subfolders. New installations default to `~/Library/Application Support/VG Sentence Mining`. Move the whole speech folder when changing disks. Stop capture before changing it, then reload the model. See [runtime setup](tools/SpeechRuntime/README.md). German and Spanish are selected explicitly. FluidAudio provides anonymous speaker labels, which can be imperfect over music, sound effects and overlapping voices.
 - English assistance runs the installed Codex CLI using its existing login. Configure the executable in Settings if needed. The launch environment includes `~/.asdf/shims` so a Node-based CLI can find its runtime when the app opens from Finder. Codex sends the selected text to OpenAI; speech recognition runs on the Mac.
 - AnkiConnect must listen on `127.0.0.1:8765`. In Settings, refresh the available decks and note types, choose a destination for each language, review the field mapping, then choose **Save**. Choices are stored separately for each Anki profile and language. Settings can be resized.
 - Word pronunciation offers [MiniMax Speech 2.8 HD](https://replicate.com/minimax/speech-2.8-hd), [ElevenLabs v3](https://replicate.com/elevenlabs/v3), [Inworld Realtime TTS 2](https://replicate.com/inworld/realtime-tts-2) and [Google Gemini 3.1 Flash TTS](https://replicate.com/google/gemini-3.1-flash-tts) through Replicate. All four support German and Spanish, with an explicit language setting for single words. Enter your Replicate API key in the app's secure setup sheet or Settings. It is stored in macOS Keychain on this device, never in preferences or a project file.
@@ -69,7 +69,7 @@ repaired approximately within the audio window.
 A small Silero speech detector runs on the CPU before recognition for all three
 models. It skips windows with no detected speech, trims background-only edges,
 and rejects words outside padded speech regions. Original audio timestamps are
-preserved. The detector model lives in `Models/SpeechDetection` on T9. Conservative
+preserved. The detector model lives in `SpeechDetection` inside your chosen models folder. Conservative
 thresholds and context padding protect quiet and brief dialogue; some noise can
 still be mistaken for speech. This reduces hallucinations, not all recognition
 errors.
@@ -144,13 +144,17 @@ The `speech-probe` executable tests transcription from an audio file:
 xcrun swift run -c release speech-probe sample.wav de --realtime --report /tmp/speech-report.json
 ```
 
-Use `es` for Spanish. Models must be on the connected T9 drive.
+Use `es` for Spanish. The probe reads the app's saved speech folder. Override
+it with `--speech-folder /path/to/Speech`, or set
+`VG_SPEECH_DIRECTORY`. The explicit command-line
+path takes precedence over the environment variable and saved settings. Keep any
+external drive containing your speech folder connected while recognizing speech.
 
 ## Verified behavior
 
 The regression suite covers recovery beyond two seconds, consecutive gaps, overlapping packets, the ten-second recovery bound, original clips and screenshots after a gap, contiguous recognition under backlog, final audio tails, bounded overload, overlapping recognition windows, real repeated words, short words with overlapping timings, speaker boundaries, HTML escaping, original audio extraction and physical media expiry.
 
-Core tests cover glossary paste formats, Unicode, persistence, selection and deletion, separate temporary-media directories for app bundles, safe cleanup of pre-upgrade captures, Replicate requests, trusted output URLs, provider error redaction, Basic and Migaku export payloads, read-only Anki discovery, profile isolation, saved mappings and a disposable Keychain round trip. The optional speech integration test switches through all three models using synthetic German and Spanish fixtures. It verifies word timings, all five glossary names for the two supporting models, cleared hints, and digital silence. Run it with `VG_SPEECH_INTEGRATION=1 xcrun swift test -c release`; it requires T9 and the downloaded local models.
+Core tests cover glossary paste formats, Unicode, persistence, selection and deletion, speech-folder persistence, separate temporary-media directories for app bundles, safe cleanup of pre-upgrade captures, Replicate requests, trusted output URLs, provider error redaction, Basic and Migaku export payloads, read-only Anki discovery, profile isolation, saved mappings and a disposable Keychain round trip. The optional speech integration test switches through all three models using synthetic German and Spanish fixtures. It verifies word timings, all five glossary names for the two supporting models, cleared hints, and digital silence. Run it with `VG_SPEECH_INTEGRATION=1 xcrun swift test -c release`; it uses the saved speech folder, or `VG_SPEECH_DIRECTORY`, and requires the downloaded local models.
 
 The optional capture-recovery integration check replays a 2.25-second missing
 interval through Whisper, then verifies later German word timestamps, original

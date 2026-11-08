@@ -4,6 +4,7 @@ import SwiftUI
 
 struct ContentView: View {
     @ObservedObject var model: AppModel
+    @Environment(\.openWindow) private var openWindow
     @State private var showingCaptureSetup = false
     @State private var followingLive = true
 
@@ -91,6 +92,9 @@ struct ContentView: View {
                 if !model.recording {
                     Button(model.choosingWindow ? "Choose the game in macOS…" : "Start capture…") { showingCaptureSetup = true }
                         .buttonStyle(.borderedProminent).controlSize(.regular).disabled(model.choosingWindow || model.starting)
+                    if !model.modelsReady && !model.loadingModels {
+                        Button("Choose speech folder…") { openWindow(id: "settings") }
+                    }
                 }
                 if model.loadingModels {
                     HStack(spacing: 8) { ProgressView().controlSize(.small); Text("Preparing speech recognition…").font(.callout).foregroundStyle(.secondary) }
@@ -149,6 +153,7 @@ struct ContentView: View {
 private struct CaptureSetupView: View {
     @ObservedObject var model: AppModel
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.openWindow) private var openWindow
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
             Text("Capture dialogue").font(.title2).fontWeight(.semibold)
@@ -171,6 +176,7 @@ private struct CaptureSetupView: View {
                 HStack { ProgressView().controlSize(.small); Text("Preparing speech recognition…").font(.callout).foregroundStyle(.secondary) }
             } else if !model.modelsReady {
                 Button("Load speech models", action: model.loadModels)
+                Button("Choose speech folder…") { dismiss(); openWindow(id: "settings") }
             }
             HStack {
                 Spacer()
@@ -294,7 +300,21 @@ struct SettingsView: View {
                     }
                 }.disabled(!model.canChangeTranscriptionModel)
                 Text(model.transcriptionModel.detail).font(.caption).foregroundStyle(.secondary)
-                Text("All three run locally. Models and runtime stay on T9; only the selected model is loaded. Stop capture before switching.")
+                Text("All three run locally. Only the selected model is loaded. Stop capture before changing the model or speech folder.")
+                    .font(.caption).foregroundStyle(.secondary)
+                HStack(alignment: .firstTextBaseline) {
+                    Text("Speech folder").fixedSize()
+                    Spacer(minLength: 16)
+                    Text((model.speechDirectories.directory.path as NSString).abbreviatingWithTildeInPath)
+                        .lineLimit(2).truncationMode(.middle).textSelection(.enabled)
+                        .frame(maxWidth: 240, alignment: .trailing)
+                        .help(model.speechDirectories.directory.path)
+                    Button("Choose…", action: model.chooseSpeechFolder)
+                        .fixedSize()
+                        .accessibilityLabel("Choose speech folder")
+                }.accessibilityElement(children: .contain)
+                    .disabled(!model.canChangeTranscriptionModel)
+                Text("All models and speech-engine files live here. Choose the folder created by the speech installer, then reload the model. Your choice saves automatically.")
                     .font(.caption).foregroundStyle(.secondary)
                 if model.loadingModels { HStack { ProgressView().controlSize(.small); Text("Loading model…") } }
                 else if !model.modelsReady { Button("Reload model", action: model.loadModels) }

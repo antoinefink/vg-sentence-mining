@@ -19,7 +19,9 @@ afconvert -f WAVE -d LEI16@16000 -c 1 /tmp/vg-spanish.aiff Tests/MiningSpeechTes
 Do not commit or redistribute those generated recordings. Ordinary unit tests
 skip the optional speech integration checks and do not require these files.
 
-Run the optional local-model regression with T9 connected:
+Run the optional local-model regression after choosing your installed speech
+folder in the app's Settings. For a separate test installation, set
+`VG_SPEECH_DIRECTORY`:
 
 ```sh
 VG_SPEECH_INTEGRATION=1 xcrun swift test -c release --filter glossaryNamesKeepTheirWordTimings

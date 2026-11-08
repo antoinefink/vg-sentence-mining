@@ -4,12 +4,18 @@ import MiningCore
 import MiningSpeech
 import Testing
 
+private func integrationSpeechDirectories() -> SpeechDirectories {
+    SpeechDirectories.load(defaults: UserDefaults(suiteName: "io.antoine.vg-sentence-mining") ?? .standard,
+                           environment: ProcessInfo.processInfo.environment)
+}
+
 @Test(.enabled(if: ProcessInfo.processInfo.environment["VG_SPEECH_INTEGRATION"] == "1"))
 func selectableModelsRecognizeGermanAndSpanishWithValidWordTimings() async throws {
     let engine = LocalSpeechEngine()
+    let directories = integrationSpeechDirectories()
     let terms = GameGlossary(text: "Geralt\nGeralt von Riva\nGeralt de Rivia\nYennefer\nKaer Morhen\nCiri\nVesemir").terms
     for model in TranscriptionModel.allCases {
-        try await engine.prepare(modelDirectory: URL(fileURLWithPath: "/Volumes/T9/VG Sentence Mining/Models"), model: model)
+        try await engine.prepare(modelDirectory: directories.modelsDirectory, model: model)
         for (fixture, language) in [("german", GameLanguage.german), ("spanish", GameLanguage.spanish)] {
             let url = try #require(Bundle.module.url(forResource: fixture, withExtension: "wav", subdirectory: "Fixtures"))
             let file = try AVAudioFile(forReading: url)
@@ -69,7 +75,8 @@ func selectableModelsRecognizeGermanAndSpanishWithValidWordTimings() async throw
 @Test(.enabled(if: ProcessInfo.processInfo.environment["VG_CAPTURE_RECOVERY_INTEGRATION"] == "1"))
 @MainActor func captureContinuesAcrossAGapWithAlignedSpeechAndScreenshots() async throws {
     let engine = LocalSpeechEngine()
-    try await engine.prepare(modelDirectory: URL(fileURLWithPath: "/Volumes/T9/VG Sentence Mining/Models"), model: .whisperLargeV3)
+    let directories = integrationSpeechDirectories()
+    try await engine.prepare(modelDirectory: directories.modelsDirectory, model: .whisperLargeV3)
     await engine.start(language: .german)
     let url = try #require(Bundle.module.url(forResource: "german", withExtension: "wav", subdirectory: "Fixtures"))
     let file = try AVAudioFile(forReading: url)

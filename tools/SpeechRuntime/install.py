@@ -54,7 +54,7 @@ def install_models(source: Path, destination: Path) -> dict:
                             ignore=shutil.ignore_patterns(".cache"))
         else:
             raise FileNotFoundError(origin)
-        models[model] = {"path": str(target), "repository": metadata["repository"],
+        models[model] = {"path": str(target.relative_to(destination)), "repository": metadata["repository"],
                          "revision": metadata["revision"]}
     return models
 
@@ -109,12 +109,14 @@ def install_native(source: Path, runtime: Path) -> dict:
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source", type=Path, required=True)
-    parser.add_argument("--runtime", type=Path, required=True)
-    parser.add_argument("--models", type=Path, required=True)
+    parser.add_argument("--destination", type=Path, required=True,
+                        help="Speech folder that will contain Models and SpeechRuntime")
     args = parser.parse_args()
     if sys.platform != "darwin":
         raise RuntimeError("Install the local Metal speech runtime on macOS.")
-    source, runtime, models_path = args.source.resolve(), args.runtime.resolve(), args.models.resolve()
+    source = args.source.resolve()
+    destination = args.destination.expanduser().resolve()
+    runtime, models_path = destination / "SpeechRuntime", destination / "Models"
     if runtime == source or source in runtime.parents or models_path == source or source in models_path.parents or runtime == models_path:
         raise ValueError("The runtime and model directories must be independent of the retained benchmark.")
     uv = shutil.which("uv")

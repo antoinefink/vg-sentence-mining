@@ -12,17 +12,24 @@ public actor LocalSpeechEngine {
     private var stitcher = WindowStitcher()
     private var diarizerOffset: Double = 0
     private var language: GameLanguage = .german
+    private var preparedModelDirectory: URL?
     private let rate = 16000
 
     public init() {}
 
     public func prepare(modelDirectory: URL, model: TranscriptionModel = .parakeetUltra) async throws {
-        guard FileManager.default.fileExists(atPath: "/Volumes/T9") else {
-            throw MiningError.message("Connect the T9 drive before loading speech models.")
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: modelDirectory.path, isDirectory: &isDirectory), isDirectory.boolValue else {
+            throw MiningError.message("The models folder is unavailable. In Settings, choose the speech folder containing Models and SpeechRuntime.")
         }
         await unload()
+        if preparedModelDirectory != modelDirectory.standardizedFileURL {
+            voiceActivity = nil
+            diarizer = nil
+            preparedModelDirectory = modelDirectory.standardizedFileURL
+        }
         let runtime = modelDirectory.deletingLastPathComponent().appendingPathComponent("SpeechRuntime", isDirectory: true)
-        let worker = try SpeechWorker(runtime: runtime, model: model)
+        let worker = try SpeechWorker(runtime: runtime, models: modelDirectory, model: model)
         do {
             try await worker.start()
             if voiceActivity == nil {

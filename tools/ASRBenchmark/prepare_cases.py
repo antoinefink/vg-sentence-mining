@@ -10,13 +10,15 @@ import zipfile
 import numpy as np
 import soundfile as sf
 
+if len(sys.argv) != 3:
+    raise SystemExit("Usage: prepare_cases.py RUN_DIRECTORY GAME_CAPTURE_DIRECTORY")
 ROOT = Path(sys.argv[1]).resolve()
 if (ROOT / "cases.json").exists():
     raise SystemExit("This run already has retained cases. Use a new run directory to prepare another set.")
 REPO = Path(__file__).resolve().parents[2]
 AUDIO = ROOT / "audio"
 AUDIO.mkdir(parents=True, exist_ok=True)
-ARCHIVE = Path("/Volumes/T9/VG Sentence Mining/Test Media/witcher-2026-10-31-missing-dialogue")
+ARCHIVE = Path(sys.argv[2]).resolve()
 cases = []
 
 
