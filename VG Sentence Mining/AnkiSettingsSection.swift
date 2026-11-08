@@ -22,7 +22,7 @@ struct AnkiSettingsSection: View {
                 LabeledContent("Profile", value: catalog.profileName)
                 Group {
                     Picker("Configure for", selection: $language) {
-                        ForEach(GameLanguage.allCases, id: \.self) { Text($0.name).tag($0) }
+                        ForEach(model.enabledLanguages, id: \.self) { Text($0.name).tag($0) }
                     }
                     Picker("Deck", selection: target.deckName) {
                         Text("Choose a deck…").tag("")
@@ -61,6 +61,9 @@ struct AnkiSettingsSection: View {
             else if let status = model.ankiStatus { Text(status).font(.caption).foregroundStyle(.secondary) }
         }
         .task { language = model.language; model.refreshAnki() }
+        .onChange(of: model.enabledLanguages) {
+            if !model.enabledLanguages.contains(language) { language = model.language }
+        }
     }
 
     private func fieldBinding(_ role: AnkiFieldRole) -> Binding<String> {

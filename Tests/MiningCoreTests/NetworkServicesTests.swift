@@ -39,8 +39,20 @@ private final class MockProtocol: URLProtocol, @unchecked Sendable {
         return URLSession(configuration: configuration)
     }
 
-    @Test(arguments: [GameLanguage.german, .spanish], PronunciationModel.allCases)
-    func generatesOnlyTheTargetWordWithTheCorrectLanguage(language: GameLanguage, model: PronunciationModel) async throws {
+    @Test(arguments: [
+        (GameLanguage.czech, "svoboda", "Czech", "cs-CZ"), (.danish, "frihed", "Danish", "da-DK"),
+        (.dutch, "vrijheid", "Dutch", "nl-NL"), (.english, "freedom", "English", "en-US"),
+        (.finnish, "vapaus", "Finnish", "fi-FI"), (.french, "liberté", "French", "fr-FR"),
+        (.german, "Freiheit", "German", "de-DE"), (.greek, "ελευθερία", "Greek", "el-GR"),
+        (.hungarian, "szabadság", "Hungarian", "hu-HU"), (.indonesian, "kebebasan", "Indonesian", "id-ID"),
+        (.italian, "libertà", "Italian", "it-IT"), (.polish, "wolność", "Polish", "pl-PL"),
+        (.portuguese, "liberdade", "Portuguese", "pt-PT"), (.romanian, "libertate", "Romanian", "ro-RO"),
+        (.russian, "свобода", "Russian", "ru-RU"), (.spanish, "libertad", "Spanish", "es-ES"),
+        (.swedish, "frihet", "Swedish", "sv-SE"), (.turkish, "özgürlük", "Turkish", "tr-TR"),
+        (.ukrainian, "свобода", "Ukrainian", "uk-UA"), (.vietnamese, "tự do", "Vietnamese", "vi-VN")
+    ], PronunciationModel.allCases)
+    func generatesOnlyTheTargetWordWithTheCorrectLanguage(fixture: (GameLanguage, String, String, String), model: PronunciationModel) async throws {
+        let (language, word, name, locale) = fixture
         let requests = Mutex<[URLRequest]>([])
         let audio = Data([73, 68, 51, 1, 2, 3])
         let network = session { request in
@@ -49,7 +61,14 @@ private final class MockProtocol: URLProtocol, @unchecked Sendable {
                 ? Data(#"{"id":"abc123","status":"succeeded","output":"https://replicate.delivery/test/word.mp3"}"#.utf8) : audio
             return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, result)
         }
-        let word = language == .german ? "Freiheit" : "libertad"
+        let inworldLanguages = ["en", "fr", "de", "it", "pt", "ru", "es", "nl", "pl"]
+        if model == .inworldTTS2, !inworldLanguages.contains(language.rawValue) {
+            await #expect(throws: MiningError.self) {
+                try await ReplicatePronunciation(session: network).generate(word: word, language: language, model: model, token: "test-token")
+            }
+            #expect(requests.withLock { $0.isEmpty })
+            return
+        }
         let result = try await ReplicatePronunciation(session: network).generate(word: word, language: language, model: model, token: "test-token")
         #expect(result == audio)
         let sent = requests.withLock { $0 }
@@ -59,16 +78,16 @@ private final class MockProtocol: URLProtocol, @unchecked Sendable {
         switch model {
         case .speech28HD:
             expectedPath = "/v1/models/minimax/speech-2.8-hd/predictions"
-            expectedInput = ["text": word, "voice_id": language == .german ? "German_FriendlyMan" : "Spanish_Narrator", "language_boost": language == .german ? "German" : "Spanish", "audio_format": "mp3", "sample_rate": 32000, "speed": 1, "emotion": "neutral"]
+            expectedInput = ["text": word, "voice_id": language == .german ? "German_FriendlyMan" : language == .spanish ? "Spanish_Narrator" : "English_Wiselady", "language_boost": name, "audio_format": "mp3", "sample_rate": 32000, "speed": 1, "emotion": "neutral"]
         case .elevenV3:
             expectedPath = "/v1/models/elevenlabs/v3/predictions"
-            expectedInput = ["prompt": word, "voice": "Rachel", "language_code": language == .german ? "de" : "es"]
+            expectedInput = ["prompt": word, "voice": "Rachel", "language_code": language.rawValue]
         case .inworldTTS2:
             expectedPath = "/v1/models/inworld/realtime-tts-2/predictions"
-            expectedInput = ["text": word, "voice_id": "Dennis", "language": language == .german ? "de" : "es", "audio_format": "mp3", "sample_rate": 48000]
+            expectedInput = ["text": word, "voice_id": "Dennis", "language": language.rawValue, "audio_format": "mp3", "sample_rate": 48000]
         case .gemini31Flash:
             expectedPath = "/v1/models/google/gemini-3.1-flash-tts/predictions"
-            expectedInput = ["text": word, "voice": "Iapetus", "language_code": language == .german ? "de-DE" : "es-ES", "prompt": "Pronounce only the provided word clearly and naturally, at a measured pace. Use neutral dictionary pronunciation, with no introduction or extra words."]
+            expectedInput = ["text": word, "voice": "Iapetus", "language_code": locale, "prompt": "Pronounce only the provided word clearly and naturally, at a measured pace. Use neutral dictionary pronunciation, with no introduction or extra words."]
         }
         #expect(sent[0].url?.path == expectedPath)
         #expect(sent[0].value(forHTTPHeaderField: "Authorization") == "Bearer test-token")

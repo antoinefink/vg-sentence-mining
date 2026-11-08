@@ -17,6 +17,16 @@ import traceback
 import unicodedata
 
 MODELS = ("parakeet-ultra", "whisper-large-v3", "qwen3-asr-1.7b")
+LANGUAGES = {"cs": "Czech", "da": "Danish", "nl": "Dutch", "en": "English", "fi": "Finnish",
+             "fr": "French", "de": "German", "el": "Greek", "hu": "Hungarian", "id": "Indonesian",
+             "it": "Italian", "pl": "Polish", "pt": "Portuguese", "ro": "Romanian", "ru": "Russian",
+             "es": "Spanish", "sv": "Swedish", "tr": "Turkish", "uk": "Ukrainian", "vi": "Vietnamese"}
+MODEL_LANGUAGES = {
+    "parakeet-ultra": set(LANGUAGES) - {"id", "tr", "vi"},
+    "whisper-large-v3": set(LANGUAGES),
+    # The forced aligner supports fewer languages than the recognizer.
+    "qwen3-asr-1.7b": {"en", "fr", "de", "it", "pt", "ru", "es"},
+}
 SAMPLE_RATE = 16000
 MAX_SAMPLES = SAMPLE_RATE * 32
 MAX_AUDIO_BASE64 = ((MAX_SAMPLES * 4 + 2) // 3) * 4
@@ -93,8 +103,8 @@ def normalized_words(text: str, words: list[dict], duration: float) -> list[dict
 def decode_request(request: dict):
     if not isinstance(request, dict) or not isinstance(request.get("id"), str):
         raise RequestError("The request needs an id.")
-    if request.get("language") not in ("de", "es"):
-        raise RequestError("Choose German or Spanish.")
+    if not isinstance(request.get("language"), str) or request["language"] not in LANGUAGES:
+        raise RequestError("Choose a supported capture language.")
     encoded = request.get("audio")
     if not isinstance(encoded, str) or len(encoded) > MAX_AUDIO_BASE64:
         raise RequestError("Audio must contain at most 32 seconds of mono 16 kHz float32 samples.")
@@ -175,6 +185,8 @@ class Runner:
             self.aligner._ensure_loaded()
 
     def run(self, audio, language: str, glossary: list[str]) -> dict:
+        if language not in MODEL_LANGUAGES[self.model]:
+            raise RequestError("This model does not support word timings for the selected language. Choose another transcription model.")
         if self.model == "whisper-large-v3":
             raw = self.transcribe(audio, path_or_hf_repo=self.path, language=language,
                                   task="transcribe", fp16=True, word_timestamps=True,
@@ -185,7 +197,7 @@ class Runner:
             text = raw["text"]
         elif self.model == "qwen3-asr-1.7b":
             result = self.session.transcribe((audio, SAMPLE_RATE),
-                                             language={"de": "German", "es": "Spanish"}[language],
+                                             language=LANGUAGES[language],
                                              context=", ".join(glossary), return_timestamps=True,
                                              forced_aligner=self.aligner, return_chunks=True, max_new_tokens=2048)
             text, words = result.text, result.segments or []

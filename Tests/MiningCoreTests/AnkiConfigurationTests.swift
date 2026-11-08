@@ -4,13 +4,13 @@ import Testing
 
 private let customMigakuFields = ["Sentence", "Translation", "Target Word", "Definitions", "Screenshot", "Sentence Audio", "Word Audio", "Images", "Example Sentences", "Is Vocabulary Card", "Is Audio Card"]
 
-@Test(arguments: [GameLanguage.german, .spanish])
+@Test(arguments: GameLanguage.allCases)
 func suggestsExistingMiningDeckAndCustomMigakuType(language: GameLanguage) throws {
-    let decks = ["Default", "🇩🇪 German::Mining", "🇪🇸 Spanish::Mining"]
-    let types = ["Basic", "Migaku German Custom", "Migaku Spanish Custom"]
+    let decks = ["Default", "\(language.name)::Mining"]
+    let types = ["Basic", "Migaku \(language.name) Custom"]
     var configuration = AnkiNoteConfiguration.suggested(profile: "Fixture", language: language, decks: decks, noteTypes: types)
     configuration.mapping = AnkiNoteConfiguration.suggestedMapping(fields: customMigakuFields)
-    #expect(configuration.deckName == (language == .german ? decks[1] : decks[2]))
+    #expect(configuration.deckName == decks[1])
     #expect(configuration.noteTypeName == "Migaku \(language.name) Custom")
     #expect(configuration.mapping[.word] == "Target Word")
     #expect(configuration.mapping[.dictionaryForm] == "Definitions")

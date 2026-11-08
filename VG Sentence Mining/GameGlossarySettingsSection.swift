@@ -85,7 +85,7 @@ struct GameGlossarySettingsSection: View {
                         Text(preset.displayTitle).tag(Optional(preset.id))
                     }
                 }
-                Text("Shared by German and Spanish. Use about 5–10 unusual names or places. Hints use up to 32 entries and 512 characters from the start of the list. Changes apply to new dialogue.")
+                Text("Shared by all languages. Use about 5–10 unusual names or places. Hints use up to 32 entries and 512 characters from the start of the list. Changes apply to new dialogue.")
                     .font(.caption).foregroundStyle(.secondary)
             }
         }

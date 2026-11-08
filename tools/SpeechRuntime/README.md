@@ -5,6 +5,13 @@ uses the retained Q8_0 GGUF with transcribe.cpp Metal. Whisper Large V3 and
 Qwen3-ASR 1.7B use MLX. Qwen additionally loads its forced aligner. Ultra does not
 support glossary hints in this runtime; Whisper and Qwen do. Qwen is Experimental.
 
+Enable capture languages in Settings. Whisper supports every offered language.
+Ultra excludes Indonesian, Turkish, and Vietnamese. Qwen is limited to English,
+French, German, Italian, Portuguese, Russian, and Spanish because word timings
+require its forced aligner. The worker rejects unsupported model/language pairs
+before inference. Enabling another language reuses the installed multilingual
+weights; it does not download another model.
+
 Native macOS tooling is required for Metal, MLX and the dylib installer. Pure
 Python protocol/timing tests run in Docker:
 

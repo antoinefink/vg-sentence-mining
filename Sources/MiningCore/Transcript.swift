@@ -1,10 +1,5 @@
 import Foundation
 
-public enum GameLanguage: String, CaseIterable, Codable, Sendable {
-    case german = "de", spanish = "es"
-    public var name: String { self == .german ? "German" : "Spanish" }
-}
-
 public struct SpokenWord: Identifiable, Equatable, Sendable {
     public var id: String { "\(start)-\(text)" }
     public var text: String

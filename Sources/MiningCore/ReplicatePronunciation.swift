@@ -23,6 +23,10 @@ public enum PronunciationModel: String, CaseIterable, Sendable {
         case .gemini31Flash: "Clear dictionary-style pronunciation from Google with the Iapetus voice."
         }
     }
+
+    public func supports(_ language: GameLanguage) -> Bool {
+        self != .inworldTTS2 || [GameLanguage.english, .french, .german, .italian, .portuguese, .russian, .spanish, .dutch, .polish].contains(language)
+    }
 }
 
 private final class NoRedirects: NSObject, URLSessionTaskDelegate, Sendable {
@@ -52,19 +56,21 @@ public struct ReplicatePronunciation: Sendable {
     public func generate(word: String, language: GameLanguage, model: PronunciationModel = .speech28HD, token: String) async throws -> Data {
         let text = word.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { throw MiningError.message("Select a word to pronounce.") }
+        guard model.supports(language) else { throw MiningError.message("\(model.name) does not support \(language.name) on Replicate. Choose another pronunciation model in Settings.") }
         var predictionID: String?
         var predictionPending = false
         do {
             let input: [String: Any]
             switch model {
             case .speech28HD:
-                input = ["text": text, "voice_id": language == .german ? "German_FriendlyMan" : "Spanish_Narrator", "language_boost": language.name, "audio_format": "mp3", "sample_rate": 32000, "speed": 1, "emotion": "neutral"]
+                let voice = language == .german ? "German_FriendlyMan" : language == .spanish ? "Spanish_Narrator" : "English_Wiselady"
+                input = ["text": text, "voice_id": voice, "language_boost": language.name, "audio_format": "mp3", "sample_rate": 32000, "speed": 1, "emotion": "neutral"]
             case .elevenV3:
                 input = ["prompt": text, "voice": "Rachel", "language_code": language.rawValue]
             case .inworldTTS2:
                 input = ["text": text, "voice_id": "Dennis", "language": language.rawValue, "audio_format": "mp3", "sample_rate": 48000]
             case .gemini31Flash:
-                input = ["text": text, "voice": "Iapetus", "language_code": language == .german ? "de-DE" : "es-ES", "prompt": "Pronounce only the provided word clearly and naturally, at a measured pace. Use neutral dictionary pronunciation, with no introduction or extra words."]
+                input = ["text": text, "voice": "Iapetus", "language_code": language.speechLocale, "prompt": "Pronounce only the provided word clearly and naturally, at a measured pace. Use neutral dictionary pronunciation, with no introduction or extra words."]
             }
             var request = authorized(api.appendingPathComponent("models/\(model.rawValue)/predictions"), token: token)
             request.httpMethod = "POST"

@@ -80,7 +80,8 @@ final class SpeechWorker: @unchecked Sendable {
     }
 
     func transcribe(_ audio: [Float], language: GameLanguage, glossary: [String]) async throws -> [SpokenWord] {
-        try await operation(timeout: 60) {
+        guard model.supports(language) else { throw MiningError.message("\(model.name) does not support word timings for \(language.name). Choose another transcription model.") }
+        return try await operation(timeout: 60) {
             let data = audio.withUnsafeBytes { Data($0) }
             let request = Request(id: UUID().uuidString, audio: data.base64EncodedString(), language: language.rawValue,
                                   glossary: self.model.supportsGlossary ? glossary : [])

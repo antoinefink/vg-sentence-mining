@@ -10,7 +10,10 @@ import ScreenCaptureKit
     @Published private(set) var transcriptionModel = TranscriptionModel(rawValue: UserDefaults.standard.string(forKey: "transcriptionModel") ?? "") ?? .parakeetUltra
     @Published private(set) var speechDirectories = SpeechDirectories.load()
     var canChangeTranscriptionModel: Bool { !loadingModels && !recording && !starting && !stopping && !choosingWindow }
-    @Published var language: GameLanguage = .german
+    @Published private(set) var languagePreferences = LanguagePreferences.load()
+    @Published private(set) var languageStatus: String?
+    var language: GameLanguage { languagePreferences.selected }
+    var enabledLanguages: [GameLanguage] { languagePreferences.languages }
     @Published var glossaryPreferences: GameGlossaryPreferences = {
         guard let data = UserDefaults.standard.data(forKey: "gameGlossaries"),
               let preferences = try? JSONDecoder().decode(GameGlossaryPreferences.self, from: data) else { return .init() }
@@ -115,6 +118,11 @@ import ScreenCaptureKit
     private var ankiFieldRequests: [GameLanguage: UUID] = [:]
 
     init() {
+        if !transcriptionModel.supports(language) {
+            transcriptionModel = .whisperLargeV3
+            UserDefaults.standard.set(transcriptionModel.rawValue, forKey: "transcriptionModel")
+        }
+        if !pronunciationModel.supports(language) { pronunciationModel = .gemini31Flash }
         activeGlossaryTerms = glossaryPreferences.selected?.terms ?? []
         do { media = try SessionMedia() } catch { self.error = error.localizedDescription }
         do { hasReplicateToken = try tokenStore.load() != nil } catch { self.error = error.localizedDescription }
@@ -196,14 +204,45 @@ import ScreenCaptureKit
     }
 
     func setTranscriptionModel(_ model: TranscriptionModel) {
-        guard model != transcriptionModel, canChangeTranscriptionModel else { return }
+        guard model != transcriptionModel, canChangeTranscriptionModel, model.supports(language) else { return }
         transcriptionModel = model
         UserDefaults.standard.set(model.rawValue, forKey: "transcriptionModel")
         loadModels()
     }
 
+    func setLanguageEnabled(_ language: GameLanguage, enabled: Bool) {
+        guard canChangeTranscriptionModel, !refreshingAnki else { return }
+        let previous = self.language
+        languagePreferences.setEnabled(language, enabled: enabled)
+        languagePreferences.save()
+        if self.language != previous { updateLanguageModels() }
+        if enabled { refreshAnki() }
+    }
+
+    func setCaptureLanguage(_ language: GameLanguage) {
+        guard canChangeTranscriptionModel, enabledLanguages.contains(language), language != self.language else { return }
+        languagePreferences.select(language)
+        languagePreferences.save()
+        updateLanguageModels()
+    }
+
+    private func updateLanguageModels() {
+        stopVoiceTest()
+        var changes: [String] = []
+        if !pronunciationModel.supports(language) {
+            pronunciationModel = .gemini31Flash
+            changes.append("Word pronunciation switched to \(pronunciationModel.name).")
+        }
+        if !transcriptionModel.supports(language) {
+            let replacement: TranscriptionModel = TranscriptionModel.parakeetUltra.supports(language) ? .parakeetUltra : .whisperLargeV3
+            changes.append("Transcription switched to \(replacement.name).")
+            setTranscriptionModel(replacement)
+        }
+        languageStatus = changes.isEmpty ? nil : "For \(language.name): " + changes.joined(separator: " ")
+    }
+
     func chooseWindow() {
-        guard modelsReady, !recording, !starting, !choosingWindow else { return }
+        guard modelsReady, transcriptionModel.supports(language), !recording, !starting, !choosingWindow else { return }
         choosingWindow = true
         windowPicker.present()
     }
@@ -321,6 +360,10 @@ import ScreenCaptureKit
     func select(_ word: SpokenWord, in row: Dialogue) {
         guard row.expiresAt > Date() else { return }
         clearSelection()
+        if !pronunciationModel.supports(row.language) {
+            pronunciationModel = .gemini31Flash
+            languageStatus = "For \(row.language.name): Word pronunciation switched to \(pronunciationModel.name)."
+        }
         now = Date()
         selected = row
         selectedWord = word.text.trimmingCharacters(in: .punctuationCharacters)
@@ -440,7 +483,7 @@ import ScreenCaptureKit
             defer { if voiceTestID == id { testingVoice = false } }
             do {
                 guard let token = try tokenStore.load() else { throw MiningError.message("Save a Replicate API key first.") }
-                let word = language == .german ? "Freiheit" : "libertad"
+                let word = language.sampleWord
                 let audio = try await pronunciation.generate(word: word, language: language, model: model, token: token)
                 try Task.checkCancellation()
                 guard voiceTestID == id else { return }
@@ -487,8 +530,10 @@ import ScreenCaptureKit
             do {
                 let client = AnkiClient()
                 let catalog = try await client.catalog()
-                var targets: [GameLanguage: AnkiNoteConfiguration] = [:], fieldsByType: [String: [String]] = [:]
-                for language in GameLanguage.allCases {
+                var targets = ankiCatalog?.profileName == catalog.profileName ? ankiTargets : [:]
+                var fieldsByType: [String: [String]] = [:]
+                let languages = Set(enabledLanguages + rows.map(\.language))
+                for language in GameLanguage.allCases where languages.contains(language) {
                     let stored = ankiPreferences.configuration(profile: catalog.profileName, language: language)
                     let draft = ankiCatalog?.profileName == catalog.profileName ? ankiTargets[language] : nil
                     var target = draft ?? stored ?? .suggested(profile: catalog.profileName, language: language, decks: catalog.decks, noteTypes: catalog.noteTypes)
@@ -505,7 +550,7 @@ import ScreenCaptureKit
                 ankiCatalog = catalog; ankiTargets = targets; ankiFields = fieldsByType
                 ankiStatus = "Connected to Anki. Save your export choices for this profile."
             } catch {
-                ankiCatalog = nil; ankiTargets.removeAll(); ankiFields.removeAll()
+                ankiStatus = nil
                 ankiError = error.localizedDescription
             }
         }
@@ -545,7 +590,7 @@ import ScreenCaptureKit
         do {
             guard !refreshingAnki, loadingAnkiFields.isEmpty else { throw MiningError.message("Wait for Anki discovery to finish before saving.") }
             var preferences = ankiPreferences
-            for (language, target) in ankiTargets {
+            for (language, target) in ankiTargets where enabledLanguages.contains(language) {
                 try target.validate(fields: ankiFields[target.noteTypeName] ?? [])
                 preferences.set(target, for: language)
             }

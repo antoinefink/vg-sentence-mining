@@ -23,4 +23,13 @@ public enum TranscriptionModel: String, CaseIterable, Codable, Sendable {
 
     public var supportsGlossary: Bool { self != .parakeetUltra }
     public var isExperimental: Bool { self == .qwen3ASR }
+
+    public func supports(_ language: GameLanguage) -> Bool {
+        switch self {
+        case .parakeetUltra: ![GameLanguage.indonesian, .turkish, .vietnamese].contains(language)
+        case .whisperLargeV3: true
+        // Qwen's forced aligner has narrower coverage than the recognizer.
+        case .qwen3ASR: [GameLanguage.english, .french, .german, .italian, .portuguese, .russian, .spanish].contains(language)
+        }
+    }
 }

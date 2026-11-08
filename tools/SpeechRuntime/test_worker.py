@@ -162,6 +162,31 @@ class NormalizationTests(unittest.TestCase):
 
 
 class CodecTests(unittest.TestCase):
+    def test_qwen_uses_language_name_and_keeps_word_timings(self):
+        runner = object.__new__(worker.Runner)
+        runner.model = "qwen3-asr-1.7b"
+        runner.aligner = object()
+        calls = []
+        def transcribe(audio, **kwargs):
+            calls.append(kwargs)
+            return types.SimpleNamespace(text="Bonjour !", segments=[{"text": "Bonjour", "start": 0.0, "end": 0.5}])
+        runner.session = types.SimpleNamespace(transcribe=transcribe)
+        result = runner.run([0.1] * 16000, "fr", [])
+        self.assertEqual(calls[0]["language"], "French")
+        self.assertEqual(result["words"][0], {"text": "Bonjour", "start": 0.0, "end": 0.5})
+
+    def test_additional_languages_are_accepted(self):
+        for code in ["en", "fr", "it", "pt", "nl", "pl", "ru", "uk", "cs", "da", "fi", "el", "hu", "ro", "sv", "tr", "id", "vi"]:
+            with self.subTest(language=code):
+                self.assertEqual(worker.decode_request(request([], language=code))[1], code)
+
+    def test_unsupported_model_language_is_rejected_before_inference(self):
+        for model, language in [("parakeet-ultra", "tr"), ("qwen3-asr-1.7b", "nl")]:
+            runner = object.__new__(worker.Runner)
+            runner.model = model
+            with self.subTest(model=model), self.assertRaises(worker.RequestError):
+                runner.run([0.1], language, [])
+
     def test_little_endian_roundtrip(self):
         audio, language, glossary = worker.decode_request(request([0, -0.5, 1], language="es", glossary=["  Kaer   Morhen  "]))
         self.assertEqual(list(audio), [0, -0.5, 1])
@@ -169,7 +194,7 @@ class CodecTests(unittest.TestCase):
         self.assertEqual(glossary, ["Kaer Morhen"])
 
     def test_invalid_audio_language_and_glossary_are_rejected(self):
-        for case in [request([float("nan")]), request([float("inf")]), request([], language="en"),
+        for case in [request([float("nan")]), request([float("inf")]), request([], language="xx"),
                      request([], glossary=[1]), request([], audio="@!"),
                      request([], audio=base64.b64encode(b"abc").decode()),
                      request([], audio="A" * (worker.MAX_AUDIO_BASE64 + 4))]:

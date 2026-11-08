@@ -1,6 +1,6 @@
 # VG Sentence Mining
 
-A native SwiftUI macOS app for collecting German and Spanish vocabulary from game dialogue.
+A native SwiftUI macOS app for collecting vocabulary from game dialogue in 20 languages.
 
 Experimental, Apple Silicon only. Speech recognition uses installed model files
 and a separately prepared local runtime. One speech folder holds both on your Mac or an
@@ -15,7 +15,7 @@ audio and screenshots are not included in this repository.
 ## Use
 
 1. Open Settings and choose your installed **Speech folder** under Transcription. Choose **Reload model**.
-2. Choose German or Spanish and an optional game glossary in the header. Choose **Start capture**, then choose the game window in the macOS sharing picker.
+2. Enable the languages you want in **Settings → Languages**. Choose one and an optional game glossary in the header. Choose **Start capture**, then choose the game window in the macOS sharing picker.
 3. Play your game. Return to the app and click a word in the recent dialogue.
 4. Review the screenshot, English definition and translation. Play the generated word pronunciation and the original sentence audio. Sentence clip padding is automatic.
 5. Choose **Send to Anki**. Keep Anki open with AnkiConnect enabled.
@@ -25,7 +25,7 @@ The preview opens beside the transcript. Close it to give the transcript the ful
 ## Local setup
 
 - Choose **Transcription → Model** in Settings: **Parakeet Ultra** (the default, fastest in our German tests), **Whisper Large V3**, or **Qwen3-ASR 1.7B (Experimental)**. Stop capture before switching. The choice saves immediately, unloads the previous ASR process, and loads only the selected model.
-- Choose one **Speech folder** in **Settings → Transcription**. Your choice saves automatically. It contains the installed `Models` and `SpeechRuntime` subfolders. New installations default to `~/Library/Application Support/VG Sentence Mining`. Move the whole speech folder when changing disks. Stop capture before changing it, then reload the model. See [runtime setup](tools/SpeechRuntime/README.md). German and Spanish are selected explicitly. FluidAudio provides anonymous speaker labels, which can be imperfect over music, sound effects and overlapping voices.
+- Choose one **Speech folder** in **Settings → Transcription**. Your choice saves automatically. It contains the installed `Models` and `SpeechRuntime` subfolders. New installations default to `~/Library/Application Support/VG Sentence Mining`. Move the whole speech folder when changing disks. Stop capture before changing it, then reload the model. See [runtime setup](tools/SpeechRuntime/README.md). Choose the spoken language explicitly. FluidAudio provides anonymous speaker labels, which can be imperfect over music, sound effects and overlapping voices.
 - English assistance runs the installed Codex CLI using its existing login. Configure the executable in Settings if needed. The launch environment includes `~/.asdf/shims` so a Node-based CLI can find its runtime when the app opens from Finder. Codex sends the selected text to OpenAI; speech recognition runs on the Mac.
 - AnkiConnect must listen on `127.0.0.1:8765`. In Settings, refresh the available decks and note types, choose a destination for each language, review the field mapping, then choose **Save**. Choices are stored separately for each Anki profile and language. Settings can be resized.
 - Word pronunciation offers [MiniMax Speech 2.8 HD](https://replicate.com/minimax/speech-2.8-hd), [ElevenLabs v3](https://replicate.com/elevenlabs/v3), [Inworld Realtime TTS 2](https://replicate.com/inworld/realtime-tts-2) and [Google Gemini 3.1 Flash TTS](https://replicate.com/google/gemini-3.1-flash-tts) through Replicate. All four support German and Spanish, with an explicit language setting for single words. Enter your Replicate API key in the app's secure setup sheet or Settings. It is stored in macOS Keychain on this device, never in preferences or a project file.
@@ -84,11 +84,46 @@ The speech probe accepts the same pasted-list format:
 xcrun swift run -c release speech-probe sample.wav de --model whisper-large-v3 --glossary /path/to/glossary.txt
 ```
 
+## Languages
+
+Enable only the languages you need in **Settings → Languages**. German and
+Spanish are enabled by default. Choices and the last capture language save
+automatically. Keep at least one enabled; stop capture before changing the list.
+Disabling a language keeps its saved Anki destinations and existing cards.
+
+Available languages: Czech, Danish, Dutch, English, Finnish, French, German,
+Greek, Hungarian, Indonesian, Italian, Polish, Portuguese, Romanian, Russian,
+Spanish, Swedish, Turkish, Ukrainian, and Vietnamese. This initial list uses
+space-separated text; languages requiring different word segmentation are not
+offered yet. Definitions and sentence translations remain in English.
+
+Whisper supports the full list. Parakeet Ultra supports all except Indonesian,
+Turkish, and Vietnamese. Qwen is available for English, French, German, Italian,
+Portuguese, Russian, and Spanish: its word aligner has narrower coverage than its
+recognizer. Changing the capture language switches to a compatible model if
+needed and shows a notice. The existing multilingual weights are reused.
+
+MiniMax, ElevenLabs, and Gemini support the full list. The Replicate Inworld
+endpoint accepts Dutch, English, French, German, Italian, Polish, Portuguese,
+Russian, and Spanish from this list. Choosing another capture language switches
+Inworld to Gemini. MiniMax retains its German and Spanish voices; other languages
+use its multilingual default voice with an explicit language hint. Gemini uses
+an explicit locale, including European Portuguese and Spanish from Spain.
+
+Coverage is based on the [Parakeet Ultra model card](https://huggingface.co/handy-computer/parakeet-ultra-gguf),
+[Whisper tokenizer](https://github.com/openai/whisper/blob/main/whisper/tokenizer.py),
+[Qwen aligner model card](https://huggingface.co/Qwen/Qwen3-ForcedAligner-0.6B),
+and the Replicate schemas for [MiniMax](https://replicate.com/minimax/speech-2.8-hd/api/schema),
+[ElevenLabs](https://replicate.com/elevenlabs/v3/api/schema),
+[Inworld](https://replicate.com/inworld/realtime-tts-2/api/schema),
+and [Gemini](https://replicate.com/google/gemini-3.1-flash-tts/api/schema).
+Language quality varies; review recognized text before export.
+
 ## Word audio and card layout
 
 New cards learn dictionary forms. A selected verb such as `verwest` becomes
 `verwesen` on the card and in its generated pronunciation. Common nouns use the singular
-with their definite article; adjectives use their base form. The original
+with their definite article where the language uses articles; adjectives use their base form. The original
 sentence and its game recording keep the original wording. Selected phrases
 stay as selected. Review or edit **Dictionary form** before export; changing it
 cancels stale word audio and regenerates pronunciation for the new target.
@@ -102,15 +137,15 @@ Both clips are saved as 16-bit WAV files at their original sample rates;
 word audio can use more storage than the downloaded MP3. Existing cards are
 unchanged. Preview playback uses the original audio.
 
-The app uses your selected note type without changing its templates. For the current profile, the suggested destinations are the German and Spanish **Mining** decks with **Migaku German Custom** and **Migaku Spanish Custom**. The app sets their layout switches automatically: the front shows the target word and generated pronunciation; the back shows the sentence, translation, definition, screenshot and original recording.
+The app uses your selected note type without changing its templates. Each enabled language has its own destination per Anki profile. Suggestions prefer an existing **Language::Mining** deck and **Migaku Language Custom** note type, then fall back to **Default** and **Basic** when available. The app sets Migaku's layout switches automatically: the front shows the target word and generated pronunciation; the back shows the sentence, translation, definition, screenshot and original recording.
 
 Expand **Field mapping** to change where each item goes. Dictionary form and definition may share **Definitions**. Both generated word audio and recorded sentence audio are required; other items can be omitted. **Basic** is also supported, with word audio on **Front** and the remaining content on **Back**. Refreshing and saving Settings do not modify Anki. Only **Send to Anki** creates a note. Export checks that the active profile still matches the saved destination.
 
-After a key is configured, choosing a word prepares its dictionary form and then generates that form's pronunciation. You can listen with **Play word** before exporting. Settings provides a **Model** picker plus **Test German voice** and **Test Spanish voice** buttons. The picker defaults to MiniMax 2.8 HD and saves changes immediately. A saved choice of the removed MiniMax 2.6 HD or 2.8 Turbo falls back to 2.8 HD. Changing models cancels pending audio and regenerates the selected draft with the new model. Export waits for valid word audio; a failed generation offers a retry.
+After a key is configured, choosing a word prepares its dictionary form and then generates that form's pronunciation. You can listen with **Play word** before exporting. Settings provides a **Model** picker, a **Test language** menu, and a **Test voice** button. The picker defaults to MiniMax 2.8 HD and saves changes immediately. A saved choice of the removed MiniMax 2.6 HD or 2.8 Turbo falls back to 2.8 HD. Changing models cancels pending audio and regenerates the selected draft with the new model. Export waits for valid word audio; a failed generation offers a retry.
 
 Choose **Google Gemini 3.1 Flash TTS** in Settings to use Google's Iapetus
 voice with neutral dictionary-style instructions. Requests explicitly use
-German (`de-DE`) or Spanish from Spain (`es-ES`). Your current model selection
+the selected language's locale, such as German (`de-DE`) or Spanish from Spain (`es-ES`). Your current model selection
 is preserved when you install the update. Gemini uses the same saved Replicate
 key; see its linked model page for pricing.
 

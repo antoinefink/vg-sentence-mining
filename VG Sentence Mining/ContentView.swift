@@ -4,7 +4,6 @@ import SwiftUI
 
 struct ContentView: View {
     @ObservedObject var model: AppModel
-    @Environment(\.openWindow) private var openWindow
     @State private var showingCaptureSetup = false
     @State private var followingLive = true
 
@@ -40,11 +39,11 @@ struct ContentView: View {
                     Text(model.rows.isEmpty ? "Dialogue" : "Recent dialogue").font(.headline)
                 }
                 if model.recording || !model.rows.isEmpty {
-                    Text(model.language.name).font(.callout).foregroundStyle(.secondary)
+                    Text((model.rows.first?.language ?? model.language).name).font(.callout).foregroundStyle(.secondary)
                 } else {
-                    Picker("Language", selection: $model.language) {
-                        ForEach(GameLanguage.allCases, id: \.self) { Text($0.name).tag($0) }
-                    }.labelsHidden().fixedSize()
+                    Picker("Language", selection: Binding(get: { model.language }, set: model.setCaptureLanguage)) {
+                        ForEach(model.enabledLanguages, id: \.self) { Text($0.name).tag($0) }
+                    }.labelsHidden().fixedSize().disabled(!model.canChangeTranscriptionModel)
                 }
                 GameGlossaryPicker(model: model)
                 Spacer()
@@ -86,15 +85,12 @@ struct ContentView: View {
         } description: {
             Text(model.recording
                  ? "Play your game, then return here to choose a word."
-                 : "Capture German or Spanish game dialogue.\nKeep the words you want to learn, with their image and audio.")
+                 : "Turn game dialogue into Anki cards.")
         } actions: {
             VStack(spacing: 12) {
                 if !model.recording {
                     Button(model.choosingWindow ? "Choose the game in macOS…" : "Start capture…") { showingCaptureSetup = true }
                         .buttonStyle(.borderedProminent).controlSize(.regular).disabled(model.choosingWindow || model.starting)
-                    if !model.modelsReady && !model.loadingModels {
-                        Button("Choose speech folder…") { openWindow(id: "settings") }
-                    }
                 }
                 if model.loadingModels {
                     HStack(spacing: 8) { ProgressView().controlSize(.small); Text("Preparing speech recognition…").font(.callout).foregroundStyle(.secondary) }
@@ -161,9 +157,9 @@ private struct CaptureSetupView: View {
             Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 12) {
                 GridRow {
                     Text("Language").gridColumnAlignment(.trailing)
-                    Picker("Language", selection: $model.language) {
-                        ForEach(GameLanguage.allCases, id: \.self) { Text($0.name).tag($0) }
-                    }.labelsHidden().fixedSize()
+                    Picker("Language", selection: Binding(get: { model.language }, set: model.setCaptureLanguage)) {
+                        ForEach(model.enabledLanguages, id: \.self) { Text($0.name).tag($0) }
+                    }.labelsHidden().fixedSize().disabled(!model.canChangeTranscriptionModel)
                 }
                 GridRow {
                     Text("Game glossary")
@@ -171,6 +167,9 @@ private struct CaptureSetupView: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+            Button("Enable more languages…") { dismiss(); openWindow(id: "settings") }
+                .buttonStyle(.link)
+            if let status = model.languageStatus { Text(status).font(.caption).foregroundStyle(.secondary) }
             if !model.rows.isEmpty { Text("A new capture replaces the current 30-minute buffer.").font(.caption).foregroundStyle(.secondary) }
             if model.loadingModels {
                 HStack { ProgressView().controlSize(.small); Text("Preparing speech recognition…").font(.callout).foregroundStyle(.secondary) }
@@ -302,15 +301,20 @@ struct WordFlowLayout: Layout {
 struct SettingsView: View {
     @ObservedObject var model: AppModel
     @State private var showingKeySetup = false
+    @State private var voiceTestLanguage: GameLanguage = .german
     var body: some View {
         Form {
+            LanguageSettingsSection(model: model)
             Section("Transcription") {
                 Picker("Model", selection: Binding(get: { model.transcriptionModel }, set: model.setTranscriptionModel)) {
                     ForEach(TranscriptionModel.allCases, id: \.self) { choice in
-                        Text(choice.name + (choice.isExperimental ? " (Experimental)" : "")).tag(choice)
+                        Text(choice.name + (choice.isExperimental ? " (Experimental)" : ""))
+                            .tag(choice).disabled(!choice.supports(model.language))
                     }
                 }.disabled(!model.canChangeTranscriptionModel)
                 Text(model.transcriptionModel.detail).font(.caption).foregroundStyle(.secondary)
+                Text("Models unavailable for \(model.language.name) are disabled. Choosing a language switches to a compatible model when needed.")
+                    .font(.caption).foregroundStyle(.secondary)
                 Text("All three run locally. Only the selected model is loaded. Stop capture before changing the model or speech folder.")
                     .font(.caption).foregroundStyle(.secondary)
                 HStack(alignment: .firstTextBaseline) {
@@ -338,7 +342,10 @@ struct SettingsView: View {
             AnkiSettingsSection(model: model)
             Section("Word pronunciation") {
                 Picker("Model", selection: $model.pronunciationModel) {
-                    ForEach(PronunciationModel.allCases, id: \.self) { Text($0.name).tag($0) }
+                    ForEach(PronunciationModel.allCases, id: \.self) { choice in
+                        Text(choice.name).tag(choice)
+                            .disabled(!choice.supports(model.language) || !choice.supports(model.selected?.language ?? model.language))
+                    }
                 }
                 Text(model.pronunciationModel.detail + " Changes apply immediately.").font(.caption).foregroundStyle(.secondary)
                 if model.hasReplicateToken {
@@ -347,11 +354,21 @@ struct SettingsView: View {
                         Button("Replace API key…") { showingKeySetup = true }
                         Button("Remove API key", role: .destructive, action: model.removeReplicateKey)
                     }
-                    HStack {
-                        Button("Test German voice") { model.testVoice(.german) }
-                        Button("Test Spanish voice") { model.testVoice(.spanish) }
-                        if model.testingVoice { ProgressView().controlSize(.small) }
-                    }.disabled(model.testingVoice)
+                    LabeledContent("Test language") {
+                        HStack(alignment: .firstTextBaseline, spacing: 12) {
+                            Picker("Test language", selection: $voiceTestLanguage) {
+                                ForEach(model.enabledLanguages, id: \.self) { Text($0.name).tag($0) }
+                            }.labelsHidden().frame(width: 160)
+                            Button("Test voice") { model.testVoice(voiceTestLanguage) }
+                                .fixedSize()
+                                .disabled(!model.pronunciationModel.supports(voiceTestLanguage))
+                            if model.testingVoice { ProgressView().controlSize(.small) }
+                        }.controlSize(.regular).disabled(model.testingVoice)
+                    }
+                    if !model.pronunciationModel.supports(voiceTestLanguage) {
+                        Text("Choose another pronunciation model to test \(voiceTestLanguage.name).")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
                     if let status = model.voiceTestStatus { Text(status).font(.caption).foregroundStyle(.secondary) }
                 } else {
                     Button("Set up Replicate…") { showingKeySetup = true }
@@ -362,6 +379,10 @@ struct SettingsView: View {
             if let status = model.settingsStatus { Text(status).font(.caption).foregroundStyle(.secondary) }
         }.formStyle(.grouped)
             .sheet(isPresented: $showingKeySetup) { PronunciationKeyView(model: model) }
+            .onAppear { voiceTestLanguage = model.language }
+            .onChange(of: model.enabledLanguages) {
+                if !model.enabledLanguages.contains(voiceTestLanguage) { voiceTestLanguage = model.language }
+            }
             .onDisappear { model.stopVoiceTest() }
     }
 }
@@ -374,7 +395,7 @@ private struct PronunciationKeyView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             Text("Word pronunciation").font(.title2).fontWeight(.semibold)
-            Text("Generate clear German and Spanish pronunciation with \(model.pronunciationModel.name) on Replicate.")
+            Text("Generate word pronunciation with \(model.pronunciationModel.name) on Replicate.")
             SecureField("Replicate API key", text: $token).textFieldStyle(.roundedBorder).onSubmit(save)
             Link("Get a Replicate API key", destination: URL(string: "https://replicate.com/account/api-tokens")!)
             Text("Your key is stored in macOS Keychain. Only the selected word is sent to Replicate and your selected voice provider. You can change the audio model in Settings.").font(.caption).foregroundStyle(.secondary)
