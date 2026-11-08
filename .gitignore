@@ -4,3 +4,16 @@ DerivedData/
 *.xcuserstate
 xcuserdata/
 .DS_Store
+
+# Local macOS system-voice recordings are not distributed.
+Tests/MiningSpeechTests/Fixtures/german.wav
+Tests/MiningSpeechTests/Fixtures/spanish.wav
+
+# Local credentials and captured media must stay outside Git.
+.env
+.env.*
+!.env.example
+*.p12
+*.pfx
+*.pem
+*.key

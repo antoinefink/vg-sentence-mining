@@ -2,7 +2,15 @@
 
 A native SwiftUI macOS app for collecting German and Spanish vocabulary from game dialogue.
 
-The local Release build is installed at `~/Applications/VG Sentence Mining.app`.
+Experimental, Apple Silicon only. The current speech setup expects an external
+volume named `T9` and a separately prepared local runtime. Model weights and
+runtime packages are not bundled. See [runtime setup](tools/SpeechRuntime/README.md)
+before starting capture. The app can be built and its unit tests can run without
+those model assets.
+
+The code is available under the [MIT license](LICENSE). Third-party software,
+model weights, services and game content retain their own terms. Captured game
+audio and screenshots are not included in this repository.
 
 ## Use
 
@@ -168,4 +176,11 @@ MiniMax Speech 2.8 HD, ElevenLabs v3 and Inworld Realtime TTS 2 each generated p
 
 ## Icon
 
-The [icon artwork](design/app-icon-cosmic.png) is a centered 1024 × 1024 crop of the supplied cosmic brain image. `AppIcon.icon` contains the opaque artwork in Apple's native format and was saved and previewed in Icon Composer. macOS applies the outer shape and lighting. The [native export](design/app-icon-cosmic-rendered.png) supplies the ten legacy asset-catalog sizes, with an optical inset for older macOS versions.
+The [icon artwork](design/app-icon-cosmic.png) is a centered 1024 × 1024 crop of an AI-generated cosmic brain image supplied by the project author. `AppIcon.icon` contains the opaque artwork in Apple's native format and was saved and previewed in Icon Composer. macOS applies the outer shape and lighting. The [native export](design/app-icon-cosmic-rendered.png) supplies the ten legacy asset-catalog sizes, with an optical inset for older macOS versions. The previous generated blue icon remains in `design/`.
+
+## Local test recordings
+
+Optional speech integration fixtures stay local and are excluded from Git.
+See [fixture setup](Tests/MiningSpeechTests/Fixtures/README.md). The public
+history omits these recordings. No API keys, private captures, model weights,
+installed runtimes or benchmark datasets are distributed with the source.
