@@ -168,4 +168,4 @@ MiniMax Speech 2.8 HD, ElevenLabs v3 and Inworld Realtime TTS 2 each generated p
 
 ## Icon
 
-The [full-bleed icon artwork](design/app-icon-fullbleed.png) was generated with the built-in imagegen tool. The [saved prompts](design/app-icon-minimal-prompt.md) describe the white dialogue bubble with a game-control mark on blue. `AppIcon.icon` supplies a fully opaque 1024 × 1024 layer in Apple's native icon format, so macOS applies the outer shape without adding an inset backing tile. The Xcode asset catalog retains the legacy macOS icon sizes.
+The [icon artwork](design/app-icon-cosmic.png) is a centered 1024 × 1024 crop of the supplied cosmic brain image. `AppIcon.icon` contains the opaque artwork in Apple's native format and was saved and previewed in Icon Composer. macOS applies the outer shape and lighting. The [native export](design/app-icon-cosmic-rendered.png) supplies the ten legacy asset-catalog sizes, with an optical inset for older macOS versions.
