@@ -1,5 +1,47 @@
 # Local speech runtime
 
+## In-app installation
+
+Choose **Set up speech recognition** on the welcome screen, or open
+**Settings → Speech**. Choose **Install** beside the model you need.
+Downloads default to `~/Library/Application Support/VG Sentence Mining`.
+No Homebrew, Python installation, terminal commands, or developer tools are required.
+An internet connection is required during installation and the first model load.
+
+Each model has a separate Python environment under `SpeechRuntime/Environments`.
+The installer uses the checksum-verified [uv 0.13.7 release](https://github.com/astral-sh/uv/releases/tag/0.13.7)
+to obtain a private Python 3.12.11 and hash-locked wheels from PyPI.
+Parakeet uses the published [transcribe-cpp 0.4.1](https://pypi.org/project/transcribe-cpp/0.4.1/) native Metal wheel.
+Other runtime dependencies are installed only for their selected model.
+The bundled `Requirements/*.txt` files pin all packages and hashes; `.in` files record direct requirements.
+
+Model downloads use pinned Hugging Face revisions. The installer checks file sizes
+and LFS SHA-256 hashes before publishing model entries in `manifest.json`.
+Qwen installs its aligner together with its recognizer. Unrelated model entries
+and older manually installed runtimes are preserved.
+Cancellation leaves partial downloads available for retry. Failed installations
+do not publish a new model entry. An exclusive folder lock prevents concurrent installations.
+Diagnostics are in `SpeechRuntime/Logs/installation.log`.
+
+Move the entire speech folder to relocate it, then choose it in Settings.
+The in-app installer uses relative interpreter links. It does not modify your system Python or shell settings.
+
+Run the offline installer and worker tests:
+
+```sh
+docker run --rm --network none -v "$PWD:/workspace:ro" -w /workspace \
+  python:3.12-slim python -m unittest discover -s tools/SpeechRuntime -p 'test_*.py'
+```
+
+The optional native installation check downloads only Parakeet into the configured
+speech folder and loads the recognition and shared models:
+
+```sh
+VG_INSTALL_INTEGRATION=1 xcrun swift test -c release --filter modelInstallationIntegration
+```
+
+## Retained offline assets
+
 The app runs one persistent local ASR process, selected in Settings. Parakeet Ultra
 uses the retained Q8_0 GGUF with transcribe.cpp Metal. Whisper Large V3 and
 Qwen3-ASR 1.7B use MLX. Qwen additionally loads its forced aligner. Ultra does not

@@ -13,6 +13,25 @@ struct AnkiSettingsSection: View {
 
     var body: some View {
         Section("Anki") {
+            if model.ankiCatalog == nil {
+                VStack(alignment: .leading, spacing: 10) {
+                    Label("Connect to Anki", systemImage: "rectangle.stack.badge.plus")
+                        .font(.headline)
+                    Text("Open Anki with AnkiConnect enabled, then connect to choose your decks and note types.")
+                        .font(.callout).foregroundStyle(.secondary)
+                    HStack(spacing: 10) {
+                        Button("Connect to Anki", action: model.refreshAnki)
+                            .buttonStyle(.borderedProminent).disabled(model.refreshingAnki)
+                        if model.refreshingAnki { ProgressView().controlSize(.small) }
+                    }
+                    if model.ankiError != nil {
+                        Text("Anki is not available yet. Keep Anki open and check that AnkiConnect is installed.")
+                            .font(.caption).foregroundStyle(.secondary).help(model.ankiError ?? "")
+                    }
+                    Text("Connecting only reads your settings. Cards are created when you choose Send to Anki.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }.padding(.vertical, 8)
+            } else {
             HStack {
                 Button("Refresh decks and note types", systemImage: "arrow.clockwise", action: model.refreshAnki)
                     .disabled(model.refreshingAnki)
@@ -59,6 +78,7 @@ struct AnkiSettingsSection: View {
             }
             if let error = model.ankiError { Text(error).font(.caption).foregroundStyle(.red) }
             else if let status = model.ankiStatus { Text(status).font(.caption).foregroundStyle(.secondary) }
+            }
         }
         .task { language = model.language; model.refreshAnki() }
         .onChange(of: model.enabledLanguages) {

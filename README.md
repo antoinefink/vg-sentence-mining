@@ -2,11 +2,11 @@
 
 A native SwiftUI macOS app for collecting vocabulary from game dialogue in 20 languages.
 
-Experimental, Apple Silicon only. Speech recognition uses installed model files
-and a separately prepared local runtime. One speech folder holds both on your Mac or an
-external drive. Model weights and runtime packages are not bundled. See [runtime setup](tools/SpeechRuntime/README.md)
-before starting capture. The app can be built and its unit tests can run without
-those model assets.
+Experimental, Apple Silicon only. Install speech recognition from the app on first launch.
+Choose one model; other models download only when you install them.
+The default speech folder is `~/Library/Application Support/VG Sentence Mining`.
+You can choose another folder on your Mac or an external drive.
+Model weights and runtime packages are downloaded separately from the app.
 
 The code is available under the [MIT license](LICENSE). Third-party software,
 model weights, services and game content retain their own terms. Captured game
@@ -14,7 +14,7 @@ audio and screenshots are not included in this repository.
 
 ## Use
 
-1. Open Settings and choose your installed **Speech folder** under Transcription. Choose **Reload model**.
+1. Choose **Set up speech recognition**, then **Install** beside a model. Parakeet Ultra is recommended for German and Spanish. The app loads it when installation finishes.
 2. Enable the languages you want in **Settings → Languages**. Choose one and an optional game glossary in the header. Choose **Start capture**, then choose the game window in the macOS sharing picker.
 3. Play your game. Return to the app and click a word in the recent dialogue.
 4. Review the screenshot, English definition and translation. Play the generated word pronunciation and the original sentence audio. Sentence clip padding is automatic.
@@ -24,8 +24,10 @@ The preview opens beside the transcript. Close it to give the transcript the ful
 
 ## Local setup
 
-- Choose **Transcription → Model** in Settings: **Parakeet Ultra** (the default, fastest in our German tests), **Whisper Large V3**, or **Qwen3-ASR 1.7B (Experimental)**. Stop capture before switching. The choice saves immediately, unloads the previous ASR process, and loads only the selected model.
-- Choose one **Speech folder** in **Settings → Transcription**. Your choice saves automatically. It contains the installed `Models` and `SpeechRuntime` subfolders. New installations default to `~/Library/Application Support/VG Sentence Mining`. Move the whole speech folder when changing disks. Stop capture before changing it, then reload the model. See [runtime setup](tools/SpeechRuntime/README.md). Choose the spoken language explicitly. FluidAudio provides anonymous speaker labels, which can be imperfect over music, sound effects and overlapping voices.
+- Open **Settings → Speech** to install or switch models: **Parakeet Ultra**, **Whisper Large V3**, or **Qwen3-ASR 1.7B (Experimental)**. Each model has its own runtime environment. Qwen also installs its required word aligner. Only the selected model loads. Stop capture before switching.
+- Installation shows download progress, supports cancellation, and offers retry after failure. Verified downloads are kept for retries. Keep the app open until installation finishes. Initial model loading downloads shared speech detection and speaker files.
+- The **Speech folder** contains `Models` and `SpeechRuntime`. **Change…** chooses another location; **Use default** restores the standard path. Changing the setting does not move existing files. Move the whole folder yourself when changing disks, then select it. Choices save automatically. Existing manually prepared speech folders remain supported. See [runtime setup](tools/SpeechRuntime/README.md). FluidAudio speaker labels can be imperfect over music, sound effects and overlapping voices.
+- Settings has separate **Speech**, **Languages**, **Anki**, and **Assistance** pages. Language assistance and pronunciation settings are under **Assistance**.
 - English assistance runs the installed Codex CLI using its existing login. Configure the executable in Settings if needed. The launch environment includes `~/.asdf/shims` so a Node-based CLI can find its runtime when the app opens from Finder. Codex sends the selected text to OpenAI; speech recognition runs on the Mac.
 - AnkiConnect must listen on `127.0.0.1:8765`. In Settings, refresh the available decks and note types, choose a destination for each language, review the field mapping, then choose **Save**. Choices are stored separately for each Anki profile and language. Settings can be resized.
 - Word pronunciation offers [MiniMax Speech 2.8 HD](https://replicate.com/minimax/speech-2.8-hd), [ElevenLabs v3](https://replicate.com/elevenlabs/v3), [Inworld Realtime TTS 2](https://replicate.com/inworld/realtime-tts-2) and [Google Gemini 3.1 Flash TTS](https://replicate.com/google/gemini-3.1-flash-tts) through Replicate. All four support German and Spanish, with an explicit language setting for single words. Enter your Replicate API key in the app's secure setup sheet or Settings. It is stored in macOS Keychain on this device, never in preferences or a project file.

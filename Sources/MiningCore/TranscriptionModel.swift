@@ -24,6 +24,14 @@ public enum TranscriptionModel: String, CaseIterable, Codable, Sendable {
     public var supportsGlossary: Bool { self != .parakeetUltra }
     public var isExperimental: Bool { self == .qwen3ASR }
 
+    public var downloadDetail: String {
+        switch self {
+        case .parakeetUltra: "About 1 GB · Fast everyday capture"
+        case .whisperLargeV3: "About 3.5 GB · All 20 languages and glossary hints"
+        case .qwen3ASR: "About 6 GB · Includes the word alignment model"
+        }
+    }
+
     public func supports(_ language: GameLanguage) -> Bool {
         switch self {
         case .parakeetUltra: ![GameLanguage.indonesian, .turkish, .vietnamese].contains(language)

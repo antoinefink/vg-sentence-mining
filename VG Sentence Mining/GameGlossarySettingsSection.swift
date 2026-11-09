@@ -14,7 +14,7 @@ struct GameGlossaryPicker: View {
                 }
             }
             Divider()
-            Button("Edit glossaries…") { openWindow(id: "settings") }
+            Button("Edit glossaries…") { model.settingsPage = .languages; openWindow(id: "settings") }
         } label: {
             Text(model.transcriptionModel.supportsGlossary ? (model.glossaryPreferences.selected?.displayTitle ?? "No glossary") : "Glossary unavailable")
                 .lineLimit(1)

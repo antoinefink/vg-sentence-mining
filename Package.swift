@@ -15,7 +15,7 @@ let package = Package(
     ],
     targets: [
         .target(name: "MiningCore"),
-        .target(name: "MiningSpeech", dependencies: ["MiningCore", .product(name: "FluidAudio", package: "FluidAudio")], resources: [.copy("Resources/speech_worker.py")]),
+        .target(name: "MiningSpeech", dependencies: ["MiningCore", .product(name: "FluidAudio", package: "FluidAudio")], resources: [.copy("Resources/speech_worker.py"), .copy("Resources/install_model.py"), .copy("Resources/Requirements")]),
         .executableTarget(name: "SpeechProbe", dependencies: ["MiningSpeech", "MiningCore"]),
         .testTarget(name: "MiningCoreTests", dependencies: ["MiningCore"]),
         .testTarget(name: "MiningSpeechTests", dependencies: ["MiningSpeech", "MiningCore"], resources: [.copy("Fixtures")]),

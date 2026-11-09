@@ -164,8 +164,9 @@ class Runner:
         path = str(model_path(models, model, manifest["models"][model]))
         self.path = path
         if model == "parakeet-ultra":
-            sys.path.insert(0, str(runtime / manifest["native"]["pythonPath"]))
-            os.environ["TRANSCRIBE_LIBRARY"] = str(runtime / manifest["native"]["library"])
+            if model not in manifest.get("environments", {}):
+                sys.path.insert(0, str(runtime / manifest["native"]["pythonPath"]))
+                os.environ["TRANSCRIBE_LIBRARY"] = str(runtime / manifest["native"]["library"])
             import transcribe_cpp
             self.native = transcribe_cpp.Model(path, backend="metal")
             self.session = self.native.session()

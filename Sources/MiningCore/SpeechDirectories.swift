@@ -1,6 +1,10 @@
 import Foundation
 
 public struct SpeechDirectories: Equatable, Sendable {
+    public static var defaultDirectory: URL {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Application Support/VG Sentence Mining", isDirectory: true)
+    }
     public let directory: URL
     public var modelsDirectory: URL { directory.appendingPathComponent("Models", isDirectory: true) }
     public var runtimeDirectory: URL { directory.appendingPathComponent("SpeechRuntime", isDirectory: true) }
@@ -10,8 +14,6 @@ public struct SpeechDirectories: Equatable, Sendable {
     }
 
     public static func load(defaults: UserDefaults = .standard, environment: [String: String] = [:]) -> Self {
-        let defaultDirectory = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Library/Application Support/VG Sentence Mining", isDirectory: true)
         func directory(_ value: String?) -> URL? {
             guard let value, !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
             return URL(fileURLWithPath: (value as NSString).expandingTildeInPath, isDirectory: true)

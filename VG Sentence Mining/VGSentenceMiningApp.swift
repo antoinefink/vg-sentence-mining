@@ -11,8 +11,8 @@ import SwiftUI
         .defaultSize(width: 1120, height: 800)
         .windowStyle(.hiddenTitleBar)
         .commands { MiningSettingsCommands() }
-        Window("Settings", id: "settings") { SettingsView(model: model).frame(minWidth: 560, minHeight: 480).padding(16) }
-            .defaultSize(width: 660, height: 800)
+        Window("Settings", id: "settings") { SettingsView(model: model).frame(minWidth: 620, minHeight: 560) }
+            .defaultSize(width: 700, height: 820)
             .windowResizability(.contentMinSize)
             .defaultLaunchBehavior(.suppressed)
     }

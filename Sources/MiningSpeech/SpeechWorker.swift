@@ -33,10 +33,10 @@ final class SpeechWorker: @unchecked Sendable {
 
     init(runtime: URL, models: URL, model: TranscriptionModel) throws {
         self.model = model
-        let python = runtime.appendingPathComponent(".venv/bin/python")
+        let python = SpeechInstallation.python(runtime: runtime, model: model)
         guard FileManager.default.isExecutableFile(atPath: python.path),
               let script = Bundle.module.url(forResource: "speech_worker", withExtension: "py") else {
-            throw MiningError.message("The speech engine is missing at \(runtime.path). Choose the speech folder containing Models and SpeechRuntime in Settings, or run tools/SpeechRuntime/install.py.")
+            throw MiningError.message("The speech engine is missing. Install \(model.name) in Settings → Transcription, or choose an existing speech folder.")
         }
         let logs = runtime.appendingPathComponent("Logs", isDirectory: true)
         try FileManager.default.createDirectory(at: logs, withIntermediateDirectories: true)

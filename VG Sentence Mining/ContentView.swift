@@ -2,6 +2,10 @@ import AppKit
 import MiningCore
 import SwiftUI
 
+enum SettingsPage: String, CaseIterable {
+    case speech = "Speech", languages = "Languages", anki = "Anki", assistance = "Assistance"
+}
+
 struct ContentView: View {
     @ObservedObject var model: AppModel
     @State private var showingCaptureSetup = false
@@ -89,11 +93,15 @@ struct ContentView: View {
         } actions: {
             VStack(spacing: 12) {
                 if !model.recording {
-                    Button(model.choosingWindow ? "Choose the game in macOS…" : "Start capture…") { showingCaptureSetup = true }
+                    Button(model.choosingWindow ? "Choose the game in macOS…" : model.installingModel != nil ? "View installation…" : model.modelsReady ? "Start capture…" : "Set up speech recognition…") { showingCaptureSetup = true }
                         .buttonStyle(.borderedProminent).controlSize(.regular).disabled(model.choosingWindow || model.starting)
                 }
                 if model.loadingModels {
                     HStack(spacing: 8) { ProgressView().controlSize(.small); Text("Preparing speech recognition…").font(.callout).foregroundStyle(.secondary) }
+                } else if let progress = model.installationProgress {
+                    HStack(spacing: 8) { ProgressView().controlSize(.small); Text(progress.message).font(.callout).foregroundStyle(.secondary) }
+                } else if !model.modelsReady && !model.recording {
+                    Text("One model download. Then capture dialogue locally.").font(.callout).foregroundStyle(.secondary)
                 }
             }
         }
@@ -151,9 +159,18 @@ private struct CaptureSetupView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openWindow) private var openWindow
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            Text("Capture dialogue").font(.title2).fontWeight(.semibold)
-            Text("Choose a language, then select your game in the macOS window picker.").foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(model.modelsReady ? "Capture dialogue" : "Set up speech recognition").font(.title2).fontWeight(.semibold)
+                    Text(model.modelsReady ? "Choose your game in the macOS window picker." : "Choose a language and install the model that suits you.")
+                        .font(.callout).foregroundStyle(.secondary)
+                }
+                Spacer()
+            }.padding(24)
+            Divider()
+            ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
             Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 12) {
                 GridRow {
                     Text("Language").gridColumnAlignment(.trailing)
@@ -167,25 +184,30 @@ private struct CaptureSetupView: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            Button("Enable more languages…") { dismiss(); openWindow(id: "settings") }
+            Button("Enable more languages…") { model.settingsPage = .languages; dismiss(); openWindow(id: "settings") }
                 .buttonStyle(.link)
             if let status = model.languageStatus { Text(status).font(.caption).foregroundStyle(.secondary) }
             if !model.rows.isEmpty { Text("A new capture replaces the current 30-minute buffer.").font(.caption).foregroundStyle(.secondary) }
-            if model.loadingModels {
-                HStack { ProgressView().controlSize(.small); Text("Preparing speech recognition…").font(.callout).foregroundStyle(.secondary) }
-            } else if !model.modelsReady {
-                Button("Load speech models", action: model.loadModels)
-                Button("Choose speech folder…") { dismiss(); openWindow(id: "settings") }
+            if !model.modelsReady {
+                SpeechModelLibrary(model: model)
+            } else {
+                Label("\(model.transcriptionModel.name) is ready", systemImage: "checkmark.circle.fill")
+                    .foregroundStyle(.green).font(.callout)
+                Button("Manage speech models…") { model.settingsPage = .speech; dismiss(); openWindow(id: "settings") }.buttonStyle(.link)
             }
+            }.padding(24)
+            }.frame(maxHeight: model.modelsReady ? 240 : 520)
+            Divider()
             HStack {
+                Text("Audio stays on your Mac").font(.caption).foregroundStyle(.secondary)
                 Spacer()
-                Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
+                Button("Close") { dismiss() }.keyboardShortcut(.cancelAction)
                 Button("Choose game window…") { dismiss(); model.chooseWindow() }
                     .keyboardShortcut(.defaultAction)
                     .disabled(!model.modelsReady || model.starting || model.choosingWindow)
-            }
+            }.frame(maxWidth: .infinity, alignment: .leading).padding(20)
         }
-        .padding(24).frame(width: 490)
+        .frame(width: 600)
     }
 }
 
@@ -259,7 +281,7 @@ private struct WordInspector: View {
                 HStack {
                     if let message = model.exportStatus { Label(message, systemImage: "checkmark.circle").font(.caption) }
                     else if let target = model.ankiTargetForSelection { Text(target.deckName).font(.caption).foregroundStyle(.secondary).lineLimit(1).help("\(target.profileName) · \(target.noteTypeName)") }
-                    if model.ankiTargetForSelection == nil { Button("Configure Anki…") { openWindow(id: "settings") }.buttonStyle(.borderless) }
+                    if model.ankiTargetForSelection == nil { Button("Configure Anki…") { model.settingsPage = .anki; openWindow(id: "settings") }.buttonStyle(.borderless) }
                     Spacer()
                     if model.sending { ProgressView().controlSize(.small) }
                     Button("Send to Anki", action: model.sendToAnki).buttonStyle(.borderedProminent).disabled(!model.canSend)
@@ -303,43 +325,29 @@ struct SettingsView: View {
     @State private var showingKeySetup = false
     @State private var voiceTestLanguage: GameLanguage = .german
     var body: some View {
+        VStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 14) {
+                Text("Settings").font(.title2).fontWeight(.semibold)
+                Picker("Settings page", selection: $model.settingsPage) {
+                    ForEach(SettingsPage.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+                }.pickerStyle(.segmented).labelsHidden()
+            }.frame(maxWidth: .infinity, alignment: .leading).padding(20)
+            Divider()
         Form {
+            if model.settingsPage == .languages {
             LanguageSettingsSection(model: model)
-            Section("Transcription") {
-                Picker("Model", selection: Binding(get: { model.transcriptionModel }, set: model.setTranscriptionModel)) {
-                    ForEach(TranscriptionModel.allCases, id: \.self) { choice in
-                        Text(choice.name + (choice.isExperimental ? " (Experimental)" : ""))
-                            .tag(choice).disabled(!choice.supports(model.language))
-                    }
-                }.disabled(!model.canChangeTranscriptionModel)
-                Text(model.transcriptionModel.detail).font(.caption).foregroundStyle(.secondary)
-                Text("Models unavailable for \(model.language.name) are disabled. Choosing a language switches to a compatible model when needed.")
-                    .font(.caption).foregroundStyle(.secondary)
-                Text("All three run locally. Only the selected model is loaded. Stop capture before changing the model or speech folder.")
-                    .font(.caption).foregroundStyle(.secondary)
-                HStack(alignment: .firstTextBaseline) {
-                    Text("Speech folder").fixedSize()
-                    Spacer(minLength: 16)
-                    Text((model.speechDirectories.directory.path as NSString).abbreviatingWithTildeInPath)
-                        .lineLimit(2).truncationMode(.middle).textSelection(.enabled)
-                        .frame(maxWidth: 240, alignment: .trailing)
-                        .help(model.speechDirectories.directory.path)
-                    Button("Choose…", action: model.chooseSpeechFolder)
-                        .fixedSize()
-                        .accessibilityLabel("Choose speech folder")
-                }.accessibilityElement(children: .contain)
-                    .disabled(!model.canChangeTranscriptionModel)
-                Text("All models and speech-engine files live here. Choose the folder created by the speech installer, then reload the model. Your choice saves automatically.")
-                    .font(.caption).foregroundStyle(.secondary)
-                if model.loadingModels { HStack { ProgressView().controlSize(.small); Text("Loading model…") } }
-                else if !model.modelsReady { Button("Reload model", action: model.loadModels) }
-            }
             GameGlossarySettingsSection(model: model)
+            }
+            if model.settingsPage == .speech {
+            Section("Transcription") {
+                SpeechModelLibrary(model: model)
+            }
+            }
+            if model.settingsPage == .assistance {
             Section("Language assistance") {
                 TextField("Codex CLI", text: $model.codexPath)
                 Text("Codex uses your existing login. Selected text is sent to its OpenAI service; game audio stays local.").font(.caption).foregroundStyle(.secondary)
             }
-            AnkiSettingsSection(model: model)
             Section("Word pronunciation") {
                 Picker("Model", selection: $model.pronunciationModel) {
                     ForEach(PronunciationModel.allCases, id: \.self) { choice in
@@ -374,10 +382,15 @@ struct SettingsView: View {
                     Button("Set up Replicate…") { showingKeySetup = true }
                 }
             }
+            }
+            if model.settingsPage == .anki { AnkiSettingsSection(model: model) }
+            if (model.settingsPage == .anki && model.ankiCatalog != nil) || model.settingsPage == .assistance {
             Button("Save", action: model.saveSettings)
                 .disabled(model.refreshingAnki || !model.loadingAnkiFields.isEmpty)
             if let status = model.settingsStatus { Text(status).font(.caption).foregroundStyle(.secondary) }
+            }
         }.formStyle(.grouped)
+        }
             .sheet(isPresented: $showingKeySetup) { PronunciationKeyView(model: model) }
             .onAppear { voiceTestLanguage = model.language }
             .onChange(of: model.enabledLanguages) {

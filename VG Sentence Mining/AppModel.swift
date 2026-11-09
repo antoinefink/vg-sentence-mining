@@ -7,9 +7,16 @@ import OSLog
 import ScreenCaptureKit
 
 @MainActor final class AppModel: ObservableObject {
+    @Published var settingsPage: SettingsPage = .speech
     @Published private(set) var transcriptionModel = TranscriptionModel(rawValue: UserDefaults.standard.string(forKey: "transcriptionModel") ?? "") ?? .parakeetUltra
     @Published private(set) var speechDirectories = SpeechDirectories.load()
-    var canChangeTranscriptionModel: Bool { !loadingModels && !recording && !starting && !stopping && !choosingWindow }
+    var canChangeTranscriptionModel: Bool { installingModel == nil && !loadingModels && !recording && !starting && !stopping && !choosingWindow }
+    @Published private(set) var installedModels: Set<TranscriptionModel> = []
+    @Published private(set) var installingModel: TranscriptionModel?
+    @Published private(set) var installationProgress: SpeechInstallProgress?
+    @Published private(set) var installationError: String?
+    private var installationTask: Task<Void, Never>?
+    private var installationID = UUID()
     @Published private(set) var languagePreferences = LanguagePreferences.load()
     @Published private(set) var languageStatus: String?
     var language: GameLanguage { languagePreferences.selected }
@@ -34,7 +41,7 @@ import ScreenCaptureKit
     @Published private(set) var recording = false
     @Published private(set) var starting = false
     @Published private(set) var stopping = false
-    @Published var status = "Load the local speech models to begin."
+    @Published var status = "Set up speech recognition to begin."
     @Published private(set) var captureRecoveryNotice: String?
     @Published var error: String?
     @Published var selected: Dialogue?
@@ -118,6 +125,7 @@ import ScreenCaptureKit
     private var ankiFieldRequests: [GameLanguage: UUID] = [:]
 
     init() {
+        refreshInstalledModels()
         if !transcriptionModel.supports(language) {
             transcriptionModel = .whisperLargeV3
             UserDefaults.standard.set(transcriptionModel.rawValue, forKey: "transcriptionModel")
@@ -158,10 +166,12 @@ import ScreenCaptureKit
 
     func loadModels() {
         guard canChangeTranscriptionModel else { return }
-        var isDirectory: ObjCBool = false
-        guard FileManager.default.fileExists(atPath: speechDirectories.modelsDirectory.path, isDirectory: &isDirectory), isDirectory.boolValue else {
+        refreshInstalledModels()
+        guard installedModels.contains(transcriptionModel) else {
             modelsReady = false
-            status = "Choose your installed speech folder in Settings."
+            status = "Install \(transcriptionModel.name) to begin."
+            loadingModels = true
+            Task { await speech.unload(); loadingModels = false }
             return
         }
         let directories = speechDirectories
@@ -178,25 +188,84 @@ import ScreenCaptureKit
         }
     }
 
+    func refreshInstalledModels() {
+        installedModels = Set(TranscriptionModel.allCases.filter { SpeechInstallation.isInstalled($0, in: speechDirectories) })
+    }
+
+    func installModel(_ choice: TranscriptionModel) {
+        guard canChangeTranscriptionModel, choice.supports(language) else { return }
+        transcriptionModel = choice
+        UserDefaults.standard.set(choice.rawValue, forKey: "transcriptionModel")
+        modelsReady = false
+        installingModel = choice
+        installationError = nil
+        installationProgress = .init(message: "Preparing the download…")
+        let id = UUID(), directories = speechDirectories
+        installationID = id
+        status = "Installing \(choice.name)…"
+        installationTask = Task {
+            await speech.unload()
+            do {
+                try await SpeechModelInstaller().install(choice, in: directories) { progress in
+                    Task { @MainActor in
+                        guard self.installationID == id, self.installingModel != nil else { return }
+                        self.installationProgress = progress
+                    }
+                }
+                try Task.checkCancellation()
+                installingModel = nil
+                installationProgress = nil
+                refreshInstalledModels()
+                loadModels()
+            } catch {
+                installingModel = nil
+                installationProgress = nil
+                refreshInstalledModels()
+                if error is CancellationError {
+                    status = "Installation cancelled. Retry when you’re ready."
+                } else {
+                    installationError = error.localizedDescription
+                    status = "Speech installation needs attention."
+                }
+            }
+            installationTask = nil
+        }
+    }
+
+    func cancelInstallation() {
+        installationTask?.cancel()
+        installationProgress = .init(message: "Cancelling installation…")
+    }
+
+    func useDefaultSpeechFolder() {
+        guard canChangeTranscriptionModel else { return }
+        setSpeechFolder(SpeechDirectories(directory: SpeechDirectories.defaultDirectory))
+    }
+
     func chooseSpeechFolder() {
         guard canChangeTranscriptionModel else { return }
         let panel = NSOpenPanel()
         panel.title = "Choose the speech folder"
-        panel.message = "Choose the folder containing Models and SpeechRuntime."
+        panel.message = "Use an existing speech folder, or choose an empty folder for new downloads."
         panel.prompt = "Use Folder"
         panel.canChooseFiles = false
         panel.canChooseDirectories = true
         panel.allowsMultipleSelection = false
-        panel.canCreateDirectories = false
+        panel.canCreateDirectories = true
         panel.directoryURL = speechDirectories.directory
         guard panel.runModal() == .OK, let url = panel.url, canChangeTranscriptionModel else { return }
-        let directories = SpeechDirectories(directory: url)
+        setSpeechFolder(SpeechDirectories(directory: url))
+    }
+
+    private func setSpeechFolder(_ directories: SpeechDirectories) {
         guard directories != speechDirectories else { return }
         speechDirectories = directories
         directories.save()
+        installationError = nil
+        refreshInstalledModels()
         modelsReady = false
         loadingModels = true
-        status = "Speech folder saved. Load the models to continue."
+        status = "Speech folder saved. Set up speech recognition to continue."
         Task {
             await speech.unload()
             loadingModels = false
@@ -340,6 +409,7 @@ import ScreenCaptureKit
     }
 
     func discardTemporaryData() {
+        installationTask?.cancel()
         clearSelection()
         do { try media?.reset() } catch { self.error = error.localizedDescription }
     }
