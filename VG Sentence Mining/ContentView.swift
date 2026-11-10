@@ -2,10 +2,6 @@ import AppKit
 import MiningCore
 import SwiftUI
 
-enum SettingsPage: String, CaseIterable {
-    case speech = "Speech", languages = "Languages", anki = "Anki", assistance = "Assistance"
-}
-
 struct ContentView: View {
     @ObservedObject var model: AppModel
     @State private var showingCaptureSetup = false
@@ -157,7 +153,7 @@ struct ContentView: View {
 private struct CaptureSetupView: View {
     @ObservedObject var model: AppModel
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.openWindow) private var openWindow
+    @Environment(\.openSettings) private var openSettings
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
@@ -184,7 +180,7 @@ private struct CaptureSetupView: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            Button("Enable more languages…") { model.settingsPage = .languages; dismiss(); openWindow(id: "settings") }
+            Button("Enable more languages…") { model.settingsPage = .languages; dismiss(); openSettings() }
                 .buttonStyle(.link)
             if let status = model.languageStatus { Text(status).font(.caption).foregroundStyle(.secondary) }
             if !model.rows.isEmpty { Text("A new capture replaces the current 30-minute buffer.").font(.caption).foregroundStyle(.secondary) }
@@ -193,7 +189,7 @@ private struct CaptureSetupView: View {
             } else {
                 Label("\(model.transcriptionModel.name) is ready", systemImage: "checkmark.circle.fill")
                     .foregroundStyle(.green).font(.callout)
-                Button("Manage speech models…") { model.settingsPage = .speech; dismiss(); openWindow(id: "settings") }.buttonStyle(.link)
+                Button("Manage speech models…") { model.settingsPage = .speech; dismiss(); openSettings() }.buttonStyle(.link)
             }
             }.padding(24)
             }.frame(maxHeight: model.modelsReady ? 240 : 520)
@@ -213,7 +209,7 @@ private struct CaptureSetupView: View {
 
 private struct WordInspector: View {
     @ObservedObject var model: AppModel
-    @Environment(\.openWindow) private var openWindow
+    @Environment(\.openSettings) private var openSettings
     @State private var screenshotImage: NSImage?
     var body: some View {
         if let selected = model.selected {
@@ -281,7 +277,7 @@ private struct WordInspector: View {
                 HStack {
                     if let message = model.exportStatus { Label(message, systemImage: "checkmark.circle").font(.caption) }
                     else if let target = model.ankiTargetForSelection { Text(target.deckName).font(.caption).foregroundStyle(.secondary).lineLimit(1).help("\(target.profileName) · \(target.noteTypeName)") }
-                    if model.ankiTargetForSelection == nil { Button("Configure Anki…") { model.settingsPage = .anki; openWindow(id: "settings") }.buttonStyle(.borderless) }
+                    if model.ankiTargetForSelection == nil { Button("Configure Anki…") { model.settingsPage = .anki; openSettings() }.buttonStyle(.borderless) }
                     Spacer()
                     if model.sending { ProgressView().controlSize(.small) }
                     Button("Send to Anki", action: model.sendToAnki).buttonStyle(.borderedProminent).disabled(!model.canSend)
@@ -320,87 +316,7 @@ struct WordFlowLayout: Layout {
     }
 }
 
-struct SettingsView: View {
-    @ObservedObject var model: AppModel
-    @State private var showingKeySetup = false
-    @State private var voiceTestLanguage: GameLanguage = .german
-    var body: some View {
-        VStack(spacing: 0) {
-            VStack(alignment: .leading, spacing: 14) {
-                Text("Settings").font(.title2).fontWeight(.semibold)
-                Picker("Settings page", selection: $model.settingsPage) {
-                    ForEach(SettingsPage.allCases, id: \.self) { Text($0.rawValue).tag($0) }
-                }.pickerStyle(.segmented).labelsHidden()
-            }.frame(maxWidth: .infinity, alignment: .leading).padding(20)
-            Divider()
-        Form {
-            if model.settingsPage == .languages {
-            LanguageSettingsSection(model: model)
-            GameGlossarySettingsSection(model: model)
-            }
-            if model.settingsPage == .speech {
-            Section("Transcription") {
-                SpeechModelLibrary(model: model)
-            }
-            }
-            if model.settingsPage == .assistance {
-            Section("Language assistance") {
-                TextField("Codex CLI", text: $model.codexPath)
-                Text("Codex uses your existing login. Selected text is sent to its OpenAI service; game audio stays local.").font(.caption).foregroundStyle(.secondary)
-            }
-            Section("Word pronunciation") {
-                Picker("Model", selection: $model.pronunciationModel) {
-                    ForEach(PronunciationModel.allCases, id: \.self) { choice in
-                        Text(choice.name).tag(choice)
-                            .disabled(!choice.supports(model.language) || !choice.supports(model.selected?.language ?? model.language))
-                    }
-                }
-                Text(model.pronunciationModel.detail + " Changes apply immediately.").font(.caption).foregroundStyle(.secondary)
-                if model.hasReplicateToken {
-                    Label("API key saved in Keychain", systemImage: "key.fill")
-                    HStack {
-                        Button("Replace API key…") { showingKeySetup = true }
-                        Button("Remove API key", role: .destructive, action: model.removeReplicateKey)
-                    }
-                    LabeledContent("Test language") {
-                        HStack(alignment: .firstTextBaseline, spacing: 12) {
-                            Picker("Test language", selection: $voiceTestLanguage) {
-                                ForEach(model.enabledLanguages, id: \.self) { Text($0.name).tag($0) }
-                            }.labelsHidden().frame(width: 160)
-                            Button("Test voice") { model.testVoice(voiceTestLanguage) }
-                                .fixedSize()
-                                .disabled(!model.pronunciationModel.supports(voiceTestLanguage))
-                            if model.testingVoice { ProgressView().controlSize(.small) }
-                        }.controlSize(.regular).disabled(model.testingVoice)
-                    }
-                    if !model.pronunciationModel.supports(voiceTestLanguage) {
-                        Text("Choose another pronunciation model to test \(voiceTestLanguage.name).")
-                            .font(.caption).foregroundStyle(.secondary)
-                    }
-                    if let status = model.voiceTestStatus { Text(status).font(.caption).foregroundStyle(.secondary) }
-                } else {
-                    Button("Set up Replicate…") { showingKeySetup = true }
-                }
-            }
-            }
-            if model.settingsPage == .anki { AnkiSettingsSection(model: model) }
-            if (model.settingsPage == .anki && model.ankiCatalog != nil) || model.settingsPage == .assistance {
-            Button("Save", action: model.saveSettings)
-                .disabled(model.refreshingAnki || !model.loadingAnkiFields.isEmpty)
-            if let status = model.settingsStatus { Text(status).font(.caption).foregroundStyle(.secondary) }
-            }
-        }.formStyle(.grouped)
-        }
-            .sheet(isPresented: $showingKeySetup) { PronunciationKeyView(model: model) }
-            .onAppear { voiceTestLanguage = model.language }
-            .onChange(of: model.enabledLanguages) {
-                if !model.enabledLanguages.contains(voiceTestLanguage) { voiceTestLanguage = model.language }
-            }
-            .onDisappear { model.stopVoiceTest() }
-    }
-}
-
-private struct PronunciationKeyView: View {
+struct PronunciationKeyView: View {
     @ObservedObject var model: AppModel
     @Environment(\.dismiss) private var dismiss
     @State private var token = ""

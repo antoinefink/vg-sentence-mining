@@ -5,7 +5,7 @@ struct LanguageSettingsSection: View {
     @ObservedObject var model: AppModel
 
     var body: some View {
-        Section("Languages") {
+        Section("Enabled languages") {
             Text("Enable the languages you want to learn. Your choices save automatically and appear in the capture and Anki menus.")
                 .font(.caption).foregroundStyle(.secondary)
             LazyVGrid(columns: [GridItem(.flexible(), alignment: .leading), GridItem(.flexible(), alignment: .leading)], alignment: .leading, spacing: 10) {

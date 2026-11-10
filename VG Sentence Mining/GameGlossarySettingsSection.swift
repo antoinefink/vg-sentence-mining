@@ -3,7 +3,7 @@ import SwiftUI
 
 struct GameGlossaryPicker: View {
     @ObservedObject var model: AppModel
-    @Environment(\.openWindow) private var openWindow
+    @Environment(\.openSettings) private var openSettings
 
     var body: some View {
         Menu {
@@ -14,7 +14,7 @@ struct GameGlossaryPicker: View {
                 }
             }
             Divider()
-            Button("Edit glossaries…") { model.settingsPage = .languages; openWindow(id: "settings") }
+            Button("Edit glossaries…") { model.settingsPage = .languages; openSettings() }
         } label: {
             Text(model.transcriptionModel.supportsGlossary ? (model.glossaryPreferences.selected?.displayTitle ?? "No glossary") : "Glossary unavailable")
                 .lineLimit(1)

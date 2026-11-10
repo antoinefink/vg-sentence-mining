@@ -12,7 +12,7 @@ struct AnkiSettingsSection: View {
     }
 
     var body: some View {
-        Section("Anki") {
+        Section(model.ankiCatalog == nil ? "Connection" : "Export destination") {
             if model.ankiCatalog == nil {
                 VStack(alignment: .leading, spacing: 10) {
                     Label("Connect to Anki", systemImage: "rectangle.stack.badge.plus")
