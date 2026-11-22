@@ -20,7 +20,7 @@ final class CaptureService: NSObject, SCStreamOutput, SCStreamDelegate, @uncheck
     private let queue = DispatchQueue(label: "io.antoine.vg.capture")
     private let context = CIContext()
     private let logger = Logger(subsystem: "io.antoine.vg-sentence-mining", category: "Capture")
-    private var converter: AVAudioConverter?
+    private var resampler: CaptureAudioResampler?
     private var lastScreenshot = -Double.infinity
     private var lastImage: Data?
     private let hostEpoch = Date().timeIntervalSince1970 - CMClockGetTime(CMClockGetHostTimeClock()).seconds
@@ -44,7 +44,7 @@ final class CaptureService: NSObject, SCStreamOutput, SCStreamDelegate, @uncheck
         stream = capture
         lastScreenshot = -Double.infinity
         lastImage = nil
-        converter = nil
+        resampler = nil
         do { try await capture.startCapture() }
         catch { continuation?.finish(throwing: error); stream = nil; throw error }
         return events
@@ -104,24 +104,16 @@ final class CaptureService: NSObject, SCStreamOutput, SCStreamDelegate, @uncheck
     private func audioSamples(_ buffer: CMSampleBuffer) throws -> [Float] {
         guard let description = buffer.formatDescription else { return [] }
         let format = AVAudioFormat(cmAudioFormatDescription: description)
-        let target = AVAudioFormat(standardFormatWithSampleRate: 16000, channels: 1)!
-        if converter?.inputFormat != format {
+        if resampler?.inputFormat != format {
             logger.notice("Capture audio format: input_rate=\(format.sampleRate, privacy: .public), channels=\(format.channelCount, privacy: .public), input_frames=\(buffer.numSamples, privacy: .public), presentation_time=\(buffer.presentationTimeStamp.seconds, privacy: .public), output_rate=16000")
-            converter = AVAudioConverter(from: format, to: target)
+            resampler = try CaptureAudioResampler(inputFormat: format)
         }
-        guard let converter else { throw MiningError.message("Cannot convert the game's audio format.") }
+        guard let resampler else { throw MiningError.message("Cannot convert the game's audio format.") }
         return try buffer.withAudioBufferList { list, _ in
-            guard let input = AVAudioPCMBuffer(pcmFormat: format, bufferListNoCopy: list.unsafePointer),
-                  let output = AVAudioPCMBuffer(pcmFormat: target, frameCapacity: AVAudioFrameCount(Double(buffer.numSamples) * 16000 / format.sampleRate) + 32) else { return [] }
-            var supplied = false
-            var conversionError: NSError?
-            converter.convert(to: output, error: &conversionError) { _, status in
-                if supplied { status.pointee = .noDataNow; return nil }
-                supplied = true; status.pointee = .haveData; return input
+            guard let input = AVAudioPCMBuffer(pcmFormat: format, bufferListNoCopy: list.unsafePointer) else {
+                throw MiningError.message("Cannot read the game's captured audio samples.")
             }
-            if let conversionError { throw conversionError }
-            guard let channel = output.floatChannelData?[0] else { return [] }
-            return Array(UnsafeBufferPointer(start: channel, count: Int(output.frameLength)))
+            return try resampler.convert(input)
         }
     }
 }
